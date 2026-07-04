@@ -5,6 +5,24 @@ HOST="http://localhost:5121"
 ADMIN_UPN="admin@example.com"
 SERVER_NAME="petstore-smoke-$(date +%s)"
 
+echo "=== Dry-run validating $SERVER_NAME ==="
+curl -s -X POST "$HOST/admin/servers/validate" \
+  -H "X-Dev-Admin: $ADMIN_UPN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"name\": \"$SERVER_NAME\",
+    \"displayName\": \"Petstore Smoke\",
+    \"description\": \"Swagger Petstore v3 smoke test\",
+    \"specSourceUrl\": \"https://petstore3.swagger.io/api/v3/openapi.json\",
+    \"baseUrl\": \"https://petstore3.swagger.io/api/v3\",
+    \"authStrategy\": \"passthrough\",
+    \"authConfig\": {},
+    \"toolMode\": \"all\",
+    \"clientProfile\": \"universal\",
+    \"pollIntervalMinutes\": 1440,
+    \"createdBy\": \"$ADMIN_UPN\"
+  }" | jq .
+
 echo "=== Registering $SERVER_NAME ==="
 curl -s -X POST "$HOST/admin/servers" \
   -H "X-Dev-Admin: $ADMIN_UPN" \
