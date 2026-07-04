@@ -1,0 +1,19 @@
+meta {
+  name: Delete Override
+  type: http
+  seq: 11
+}
+
+delete {
+  url: {{baseUrl}}/admin/servers/petstore-smoke/tools/findpetsbystatus/override
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-Admin: {{adminUpn}}
+}
+
+docs {
+  Remove a tool's description override.
+}

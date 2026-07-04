@@ -1,0 +1,27 @@
+meta {
+  name: Update Server
+  type: http
+  seq: 4
+}
+
+patch {
+  url: {{baseUrl}}/admin/servers/petstore-smoke
+  body: json
+  auth: none
+}
+
+headers {
+  X-Dev-Admin: {{adminUpn}}
+  Content-Type: application/json
+  Accept: application/json
+}
+
+body:json {
+  {
+    "displayName": "Petstore Smoke Updated"
+  }
+}
+
+docs {
+  Update mutable server definition fields.
+}

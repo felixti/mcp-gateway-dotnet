@@ -1,0 +1,19 @@
+meta {
+  name: Get Ready
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/ready
+  body: none
+  auth: none
+}
+
+headers {
+  Accept: application/json
+}
+
+docs {
+  Readiness probe. Aggregates dependency probes and returns 200/503.
+}

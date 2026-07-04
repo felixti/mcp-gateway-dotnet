@@ -1,0 +1,19 @@
+meta {
+  name: Get Health
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/health
+  body: none
+  auth: none
+}
+
+headers {
+  Accept: application/json
+}
+
+docs {
+  Liveness probe. Returns 200 when the gateway is running.
+}

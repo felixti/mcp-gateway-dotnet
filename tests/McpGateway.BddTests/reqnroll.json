@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schemas.reqnroll.net/reqnroll-config-latest.json",
+  "language": {
+    "feature": "en-US"
+  },
+  "bindingCulture": {
+    "language": "en-US"
+  },
+  "generator": {
+    "allowDebugGeneratedFiles": false
+  },
+  "trace": {
+    "traceTimings": false,
+    "traceSuccessfulSteps": true,
+    "traceErrorMessages": true
+  }
+}

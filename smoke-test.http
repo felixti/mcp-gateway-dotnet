@@ -1,0 +1,87 @@
+@host = http://localhost:5121
+@adminUpn = admin@example.com
+@serverName = petstore-smoke
+# Replace with the fullKey returned by the create-API-key request below.
+@gatewayKey = REPLACE_ME
+
+### Register the Swagger Petstore v3 server definition
+# Change @serverName if you rerun this file; names must be unique.
+POST {{host}}/admin/servers
+X-Dev-Admin: {{adminUpn}}
+Content-Type: application/json
+
+{
+  "name": "{{serverName}}",
+  "displayName": "Petstore Smoke",
+  "description": "Swagger Petstore v3 smoke test",
+  "specSourceUrl": "https://petstore3.swagger.io/api/v3/openapi.json",
+  "baseUrl": "https://petstore3.swagger.io/api/v3",
+  "authStrategy": "passthrough",
+  "authConfig": {},
+  "toolMode": "all",
+  "clientProfile": "universal",
+  "pollIntervalMinutes": 1440,
+  "createdBy": "{{adminUpn}}"
+}
+
+### Approve the server definition so tools are exposed
+POST {{host}}/admin/servers/{{serverName}}/approve
+X-Dev-Admin: {{adminUpn}}
+
+### Create an MCP client API key
+# Copy the `fullKey` value from the response into @gatewayKey above,
+# then run the MCP requests below.
+POST {{host}}/admin/servers/{{serverName}}/api-keys
+X-Dev-Admin: {{adminUpn}}
+Content-Type: application/json
+
+{
+  "name": "manual-smoke-test",
+  "scopes": ["{{serverName}}"]
+}
+
+### MCP initialize
+POST {{host}}/mcp/{{serverName}}
+X-Gateway-Key: {{gatewayKey}}
+Content-Type: application/json
+Accept: application/json, text/event-stream
+
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "initialize",
+  "params": {
+    "protocolVersion": "2025-06-18",
+    "capabilities": {},
+    "clientInfo": { "name": "manual-smoke-test", "version": "0.0.1" }
+  }
+}
+
+### MCP list tools
+POST {{host}}/mcp/{{serverName}}
+X-Gateway-Key: {{gatewayKey}}
+Content-Type: application/json
+Accept: application/json, text/event-stream
+
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/list",
+  "params": {}
+}
+
+### MCP call tool
+POST {{host}}/mcp/{{serverName}}
+X-Gateway-Key: {{gatewayKey}}
+Content-Type: application/json
+Accept: application/json, text/event-stream
+
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "method": "tools/call",
+  "params": {
+    "name": "findpetsbystatus",
+    "arguments": { "status": "available" }
+  }
+}

@@ -1,0 +1,20 @@
+meta {
+  name: List API Keys
+  type: http
+  seq: 12
+}
+
+get {
+  url: {{baseUrl}}/admin/servers/petstore-smoke/api-keys
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-Admin: {{adminUpn}}
+  Accept: application/json
+}
+
+docs {
+  List issued gateway API keys for a server.
+}

@@ -1,0 +1,33 @@
+meta {
+  name: Tools Call
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/mcp/petstore-smoke
+  body: json
+  auth: none
+}
+
+headers {
+  X-Gateway-Key: {{mcpApiKey}}
+  Content-Type: application/json
+  Accept: text/event-stream, application/json
+}
+
+body:json {
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "tools/call",
+    "params": {
+      "name": "findpetsbystatus",
+      "arguments": { "status": "available" }
+    }
+  }
+}
+
+docs {
+  Call an MCP tool and proxy the request to the upstream Petstore3 API.
+}

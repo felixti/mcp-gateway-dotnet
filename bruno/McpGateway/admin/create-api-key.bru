@@ -1,0 +1,34 @@
+meta {
+  name: Create API Key
+  type: http
+  seq: 13
+}
+
+post {
+  url: {{baseUrl}}/admin/servers/petstore-smoke/api-keys
+  body: json
+  auth: none
+}
+
+headers {
+  X-Dev-Admin: {{adminUpn}}
+  Content-Type: application/json
+  Accept: application/json
+}
+
+body:json {
+  {
+    "name": "bruno-smoke-test",
+    "scopes": ["petstore-smoke"]
+  }
+}
+
+script:post-response {
+  if (res.body && res.body.fullKey) {
+    bru.setEnvVar("mcpApiKey", res.body.fullKey);
+  }
+}
+
+docs {
+  Issue a new gateway API key. The full key is saved to the mcpApiKey environment variable.
+}

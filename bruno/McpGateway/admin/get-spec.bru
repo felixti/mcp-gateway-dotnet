@@ -1,0 +1,20 @@
+meta {
+  name: Get Spec
+  type: http
+  seq: 16
+}
+
+get {
+  url: {{baseUrl}}/admin/servers/petstore-smoke/spec
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-Admin: {{adminUpn}}
+  Accept: application/json
+}
+
+docs {
+  Get the currently stored OpenAPI spec for a server definition.
+}

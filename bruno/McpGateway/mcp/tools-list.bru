@@ -1,0 +1,30 @@
+meta {
+  name: Tools List
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/mcp/petstore-smoke
+  body: json
+  auth: none
+}
+
+headers {
+  X-Gateway-Key: {{mcpApiKey}}
+  Content-Type: application/json
+  Accept: text/event-stream, application/json
+}
+
+body:json {
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/list",
+    "params": {}
+  }
+}
+
+docs {
+  List MCP tools exposed by the approved server.
+}

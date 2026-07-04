@@ -1,0 +1,26 @@
+{
+  "$schema": "https://alirezanet.github.io/Husky.Net/schema.json",
+  "tasks": [
+    {
+      "name": "dotnet-format-verify",
+      "group": "pre-commit",
+      "command": "dotnet",
+      "args": ["format", "McpGateway.sln", "--verify-no-changes", "--include", "${staged}"],
+      "include": ["**/*.cs"]
+    },
+    {
+      "name": "dotnet-build",
+      "group": "pre-commit",
+      "command": "dotnet",
+      "args": ["build", "McpGateway.sln", "--warnaserror"],
+      "include": ["**/*.cs", "**/*.csproj", "**/*.sln"]
+    },
+    {
+      "name": "dotnet-test",
+      "group": "pre-push",
+      "command": "dotnet",
+      "args": ["test", "McpGateway.sln"],
+      "include": ["**/*.cs", "**/*.csproj"]
+    }
+  ]
+}

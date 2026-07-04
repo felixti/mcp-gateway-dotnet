@@ -1,0 +1,20 @@
+meta {
+  name: Refresh Server
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/admin/servers/petstore-smoke/refresh
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-Admin: {{adminUpn}}
+  Accept: application/json
+}
+
+docs {
+  Re-fetch the spec from specSourceUrl, diff it and regenerate tools.
+}

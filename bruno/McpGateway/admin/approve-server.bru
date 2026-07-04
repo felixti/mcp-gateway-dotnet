@@ -1,0 +1,20 @@
+meta {
+  name: Approve Server
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/admin/servers/petstore-smoke/approve
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-Admin: {{adminUpn}}
+  Accept: application/json
+}
+
+docs {
+  Approve a server definition so its tools are exposed via MCP.
+}

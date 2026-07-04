@@ -1,0 +1,27 @@
+meta {
+  name: Update Tool
+  type: http
+  seq: 9
+}
+
+patch {
+  url: {{baseUrl}}/admin/servers/petstore-smoke/tools/findpetsbystatus
+  body: json
+  auth: none
+}
+
+headers {
+  X-Dev-Admin: {{adminUpn}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "descriptionOverride": "Find pets by status (admin-reviewed)",
+    "visible": true
+  }
+}
+
+docs {
+  Update a tool's description override or visibility.
+}

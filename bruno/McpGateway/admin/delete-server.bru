@@ -1,0 +1,19 @@
+meta {
+  name: Delete Server
+  type: http
+  seq: 5
+}
+
+delete {
+  url: {{baseUrl}}/admin/servers/petstore-smoke
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-Admin: {{adminUpn}}
+}
+
+docs {
+  Soft-delete a server definition. Returns 204 No Content.
+}

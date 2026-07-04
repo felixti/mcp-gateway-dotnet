@@ -1,0 +1,28 @@
+meta {
+  name: Upload Spec
+  type: http
+  seq: 15
+}
+
+post {
+  url: {{baseUrl}}/admin/servers/petstore-smoke/spec
+  body: json
+  auth: none
+}
+
+headers {
+  X-Dev-Admin: {{adminUpn}}
+  Content-Type: application/json
+  Accept: application/json
+}
+
+body:json {
+  {
+    "content": "{\"openapi\":\"3.0.0\",\"info\":{\"title\":\"Petstore\",\"version\":\"1.0.0\"},\"paths\":{}}",
+    "contentType": "application/json"
+  }
+}
+
+docs {
+  Upload a raw OpenAPI spec for a server definition.
+}

@@ -1,0 +1,27 @@
+meta {
+  name: Update Spec Source
+  type: http
+  seq: 17
+}
+
+put {
+  url: {{baseUrl}}/admin/servers/petstore-smoke/spec-source
+  body: json
+  auth: none
+}
+
+headers {
+  X-Dev-Admin: {{adminUpn}}
+  Content-Type: application/json
+  Accept: application/json
+}
+
+body:json {
+  {
+    "specSourceUrl": "https://petstore3.swagger.io/api/v3/openapi.json"
+  }
+}
+
+docs {
+  Update the URL the gateway polls for spec changes.
+}

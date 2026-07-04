@@ -1,0 +1,37 @@
+meta {
+  name: Register Server
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/admin/servers
+  body: json
+  auth: none
+}
+
+headers {
+  X-Dev-Admin: {{adminUpn}}
+  Content-Type: application/json
+  Accept: application/json
+}
+
+body:json {
+  {
+    "name": "petstore-smoke",
+    "displayName": "Petstore Smoke",
+    "description": "Swagger Petstore v3 smoke test",
+    "specSourceUrl": "https://petstore3.swagger.io/api/v3/openapi.json",
+    "baseUrl": "https://petstore3.swagger.io/api/v3",
+    "authStrategy": "passthrough",
+    "authConfig": {},
+    "toolMode": "all",
+    "clientProfile": "universal",
+    "pollIntervalMinutes": 1440,
+    "createdBy": "{{adminUpn}}"
+  }
+}
+
+docs {
+  Register a new MCP server definition from a public OpenAPI spec URL.
+}

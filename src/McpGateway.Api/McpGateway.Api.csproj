@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\McpGateway.Core\McpGateway.Core.csproj" />
+    <ProjectReference Include="..\McpGateway.Management\McpGateway.Management.csproj" />
+    <ProjectReference Include="..\McpGateway.McpSdk\McpGateway.McpSdk.csproj" />
+    <ProjectReference Include="..\McpGateway.Persistence\McpGateway.Persistence.csproj" />
+    <ProjectReference Include="..\McpGateway.Telemetry\McpGateway.Telemetry.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BCrypt.Net-Next" Version="4.2.1" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" Version="10.0.4" />
+    <PackageReference Include="Microsoft.Extensions.Http.Polly" Version="10.0.9" />
+    <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.19.1" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.0.0-preview.1" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.19.1" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+</Project>

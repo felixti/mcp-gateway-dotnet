@@ -1,0 +1,19 @@
+meta {
+  name: Revoke API Key
+  type: http
+  seq: 14
+}
+
+delete {
+  url: {{baseUrl}}/admin/servers/petstore-smoke/api-keys/{{apiKeyId}}
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-Admin: {{adminUpn}}
+}
+
+docs {
+  Revoke a gateway API key by ID.
+}

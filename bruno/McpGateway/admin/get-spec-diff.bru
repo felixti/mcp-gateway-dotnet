@@ -1,0 +1,20 @@
+meta {
+  name: Get Spec Diff
+  type: http
+  seq: 18
+}
+
+get {
+  url: {{baseUrl}}/admin/servers/petstore-smoke/spec/diff/{{versionId}}
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-Admin: {{adminUpn}}
+  Accept: application/json
+}
+
+docs {
+  Get the diff between the current spec and a specific spec version.
+}

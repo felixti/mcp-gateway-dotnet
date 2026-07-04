@@ -1,0 +1,26 @@
+meta {
+  name: Put Override
+  type: http
+  seq: 10
+}
+
+put {
+  url: {{baseUrl}}/admin/servers/petstore-smoke/tools/findpetsbystatus/override
+  body: json
+  auth: none
+}
+
+headers {
+  X-Dev-Admin: {{adminUpn}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "descriptionOverride": "Hardened description (admin review)"
+  }
+}
+
+docs {
+  Set a description override for a tool.
+}

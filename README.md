@@ -40,6 +40,9 @@ side, no MCP SDK integration, no per-API server process.
 git clone https://github.com/felixti/mcp-gateway-dotnet.git
 cd mcp-gateway-dotnet
 
+# Restore local .NET tools (Husky.Net git hooks)
+dotnet tool restore
+
 # Start dependencies (PG, Azurite, Jaeger)
 docker compose up -d
 
@@ -48,7 +51,19 @@ dotnet ef database update --project src/McpGateway.Persistence
 
 # Run the gateway
 dotnet run --project src/McpGateway.Api
+```
 
+### Git hooks (shift-left)
+
+Husky.Net is configured to run checks before commits and pushes:
+
+- **pre-commit**: `dotnet format --verify-no-changes` on staged files + `dotnet build`
+- **pre-push**: `dotnet test` (unit + integration + BDD)
+
+Hooks are installed automatically after `dotnet tool restore` and `dotnet husky install`.
+To bypass a hook in an emergency, use `git commit --no-verify` or `git push --no-verify`.
+
+```bash
 # Register a server definition
 curl -X POST http://localhost:5000/admin/servers \
   -H "Authorization: Bearer <admin-jwt>" \
