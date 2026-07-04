@@ -265,6 +265,58 @@ This spec produces three tools:
 - `createpet` — required `body` property matching `Pet`.
 - `getpetbyid` — required `petId` path parameter.
 
+## Validation at registration
+
+The gateway validates every spec when it is registered, refreshed, or uploaded. Validation produces **errors** (blocking) and **warnings** (non-blocking). Errors prevent the server definition from being saved; warnings are saved with the definition and returned in `GET /admin/servers` and `GET /admin/servers/{name}` responses so they can be surfaced in registration pages or IDPs.
+
+You can preview the validation report without persisting anything by calling the dry-run endpoint:
+
+```bash
+curl -X POST http://localhost:5121/admin/servers/validate \
+  -H "X-Dev-Admin: admin@example.com" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "pet-inventory",
+    "displayName": "Pet Inventory",
+    "specSourceUrl": "https://api.example.com/openapi.yaml",
+    "baseUrl": "https://api.example.com",
+    "authStrategy": "passthrough",
+    "authConfig": {},
+    "toolMode": "all",
+    "clientProfile": "universal",
+    "createdBy": "admin@example.com"
+  }'
+```
+
+### Error codes (blocking)
+
+| Code | Meaning |
+|---|---|
+| `parse_error` | The spec is not valid JSON/YAML OpenAPI. |
+| `empty_paths` | The spec has no paths. |
+| `empty_operations` | A path has no operations. |
+| `empty_tool_name` | An `operationId` sanitizes to an empty string. |
+| `duplicate_tool_name` | Two operations produce the same sanitized tool name. |
+| `missing_path_parameter` | A path placeholder has no matching `in: path` parameter. |
+| `orphan_path_parameter` | An `in: path` parameter has no placeholder in the path. |
+| `external_reference` | A `$ref` is not rooted in `#/components/`. |
+| `unresolved_reference` | A `$ref` points to a missing component. |
+| `recursive_reference` | A schema has a `$ref` cycle. |
+
+### Warning codes (non-blocking)
+
+| Code | Meaning |
+|---|---|
+| `unsupported_openapi_version` | The OpenAPI version is not in the 3.0.x set. |
+| `missing_operation_id` | An operation has no `operationId`; a synthetic name is used. |
+| `missing_summary_and_description` | An operation has no summary or description. |
+| `non_json_response_body` | A 2xx response lacks `application/json` content. |
+| `unsupported_request_body` | The request body uses a non-JSON media type. |
+| `optional_body_forced_required` | `requestBody.required` is `false` but the tool schema forces it required. |
+| `ignored_header_parameter` | A header/cookie parameter is exposed but sent as a query parameter. |
+| `path_parameter_not_required` | A path parameter is not marked `required`. |
+| `reader_warning` | A warning emitted by the OpenAPI reader. |
+
 ## Registering the spec
 
 Save the spec as JSON or YAML and register it through the admin API:

@@ -19,6 +19,7 @@ public class ServerManagementService
     private readonly ISpecVersionRepository _specVersionRepo;
     private readonly IToolStore _toolStore;
     private readonly IToolGenerator _toolGenerator;
+    private readonly IOpenApiSpecValidator _specValidator;
     private readonly ISpecFetcher _specFetcher;
     private readonly ISpecDiffService _diffService;
     private readonly ICallerIdentityAccessor _caller;
@@ -29,6 +30,7 @@ public class ServerManagementService
         ISpecVersionRepository specVersionRepo,
         IToolStore toolStore,
         IToolGenerator toolGenerator,
+        IOpenApiSpecValidator specValidator,
         ISpecFetcher specFetcher,
         ISpecDiffService diffService,
         ICallerIdentityAccessor caller,
@@ -38,6 +40,7 @@ public class ServerManagementService
         _specVersionRepo = specVersionRepo;
         _toolStore = toolStore;
         _toolGenerator = toolGenerator;
+        _specValidator = specValidator;
         _specFetcher = specFetcher;
         _diffService = diffService;
         _caller = caller;
@@ -54,10 +57,13 @@ public class ServerManagementService
             ? (request.SpecContent!, ComputeHash(request.SpecContent!))
             : await FetchSpecAsync(request.SpecSourceUrl!, ct);
 
+        var clientProfile = Enum.Parse<ClientProfile>(Capitalize(request.ClientProfile));
+        ValidateAndThrow(specContent, clientProfile);
+        var warnings = GetWarnings(specContent, clientProfile);
+
         var parser = new OpenApiParser();
         var document = parser.Parse(specContent);
 
-        var clientProfile = Enum.Parse<ClientProfile>(Capitalize(request.ClientProfile));
         var tools = _toolGenerator.Generate(document, clientProfile);
 
         var definition = new McpServerDefinition
@@ -96,14 +102,25 @@ public class ServerManagementService
         };
 
         var saved = await _serverRepo.AddAsync(definition, ct);
-        return ServerResponse.FromDomain(saved);
+        return ServerResponse.FromDomain(saved, warnings);
+    }
+
+    public async Task<SpecValidationReport> ValidateAsync(CreateServerRequest request, CancellationToken ct)
+    {
+        var specContent = !string.IsNullOrWhiteSpace(request.SpecContent)
+            ? request.SpecContent!
+            : (await FetchSpecAsync(request.SpecSourceUrl!, ct)).Content;
+
+        var clientProfile = Enum.Parse<ClientProfile>(Capitalize(request.ClientProfile));
+        return _specValidator.Validate(specContent, clientProfile);
     }
 
     public async Task<ServerResponse> GetAsync(string name, CancellationToken ct)
     {
         var def = await _serverRepo.GetByNameForAdminAsync(name, ct)
             ?? throw new NotFoundException("Server definition", name);
-        return ServerResponse.FromDomain(def);
+        var warnings = GetWarnings(def.SpecContent, def.ClientProfile);
+        return ServerResponse.FromDomain(def, warnings);
     }
 
     public async Task<IReadOnlyList<ServerResponse>> ListAsync(CancellationToken ct)
@@ -111,7 +128,7 @@ public class ServerManagementService
         var defs = await _serverRepo.ListAsync(ct);
         return defs
             .OrderBy(d => d.Name, StringComparer.Ordinal)
-            .Select(ServerResponse.FromDomain)
+            .Select(d => ServerResponse.FromDomain(d, GetWarnings(d.SpecContent, d.ClientProfile)))
             .ToList();
     }
 
@@ -175,8 +192,12 @@ public class ServerManagementService
             def.LastRefreshedAt = DateTime.UtcNow;
             def.UpdatedAt = def.LastRefreshedAt.Value;
             await _serverRepo.UpdateAsync(def, ct);
-            return new RefreshResponse(def.Id, def.ApprovalStatus, false, newHash, def.LastRefreshedAt.Value, def.Tools.Count);
+            var unchangedWarnings = GetWarnings(def.SpecContent, def.ClientProfile);
+            return new RefreshResponse(def.Id, def.ApprovalStatus, false, newHash, def.LastRefreshedAt.Value, def.Tools.Count, unchangedWarnings);
         }
+
+        ValidateAndThrow(newContent, def.ClientProfile);
+        var warnings = GetWarnings(newContent, def.ClientProfile);
 
         var parser = new OpenApiParser();
         var document = parser.Parse(newContent);
@@ -222,7 +243,7 @@ public class ServerManagementService
 
         _toolStore.RemoveServer(def.Name);
 
-        return new RefreshResponse(def.Id, def.ApprovalStatus, true, newHash, def.LastRefreshedAt.Value, newTools.Count);
+        return new RefreshResponse(def.Id, def.ApprovalStatus, true, newHash, def.LastRefreshedAt.Value, newTools.Count, warnings);
     }
 
     public async Task<ApproveResponse> ApproveAsync(string name, CancellationToken ct)
@@ -265,8 +286,12 @@ public class ServerManagementService
             def.LastRefreshedAt = DateTime.UtcNow;
             def.UpdatedAt = def.LastRefreshedAt.Value;
             await _serverRepo.UpdateAsync(def, ct);
-            return ServerResponse.FromDomain(def);
+            var unchangedWarnings = GetWarnings(def.SpecContent, def.ClientProfile);
+            return ServerResponse.FromDomain(def, unchangedWarnings);
         }
+
+        ValidateAndThrow(request.Content, def.ClientProfile);
+        var warnings = GetWarnings(request.Content, def.ClientProfile);
 
         var parser = new OpenApiParser();
         var document = parser.Parse(request.Content);
@@ -298,7 +323,7 @@ public class ServerManagementService
         await _serverRepo.UpdateAsync(def, ct);
         _toolStore.RemoveServer(name);
 
-        return ServerResponse.FromDomain(def);
+        return ServerResponse.FromDomain(def, warnings);
     }
 
     public async Task<ServerResponse> UpdateSpecSourceAsync(string name, SpecSourceUpdateRequest request, CancellationToken ct)
@@ -347,6 +372,21 @@ public class ServerManagementService
     {
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(content));
         return Convert.ToHexString(bytes).ToLowerInvariant();
+    }
+
+    private IReadOnlyList<SpecValidationIssue> GetWarnings(string specContent, ClientProfile profile)
+    {
+        var report = _specValidator.Validate(specContent, profile);
+        return report.Warnings;
+    }
+
+    private void ValidateAndThrow(string specContent, ClientProfile profile)
+    {
+        var report = _specValidator.Validate(specContent, profile);
+        if (report.Errors.Count > 0)
+        {
+            throw new OpenApiSpecValidationException(report);
+        }
     }
 
     private async Task<(string Content, string Hash)> FetchSpecAsync(string url, CancellationToken ct)

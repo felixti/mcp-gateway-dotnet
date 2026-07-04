@@ -24,12 +24,18 @@ public class ServerManagementServiceTests
     private readonly IToolStore _toolStore = Substitute.For<IToolStore>();
     private readonly IToolGenerator _toolGenerator = Substitute.For<IToolGenerator>();
     private readonly ISpecFetcher _specFetcher = Substitute.For<ISpecFetcher>();
+    private readonly IOpenApiSpecValidator _specValidator = Substitute.For<IOpenApiSpecValidator>();
     private readonly ISpecDiffService _diffService = Substitute.For<ISpecDiffService>();
     private readonly ICallerIdentityAccessor _caller = Substitute.For<ICallerIdentityAccessor>();
 
-    private ServerManagementService CreateSut() => new(
-        _serverRepo, _specVersionRepo, _toolStore, _toolGenerator, _specFetcher, _diffService, _caller,
-        NullLogger<ServerManagementService>.Instance);
+    private ServerManagementService CreateSut()
+    {
+        _specValidator.Validate(Arg.Any<string>(), Arg.Any<ClientProfile>())
+            .Returns(new SpecValidationReport([], []));
+        return new(
+            _serverRepo, _specVersionRepo, _toolStore, _toolGenerator, _specValidator, _specFetcher, _diffService, _caller,
+            NullLogger<ServerManagementService>.Instance);
+    }
 
     [Fact]
     public async Task RegisterAsync_WithSpecSource_FetchesAndGeneratesTools()

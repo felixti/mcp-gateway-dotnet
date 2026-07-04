@@ -19,6 +19,7 @@ public static class CoreServiceExtensions
             return new SpecFetcher(factory);
         });
         services.AddSingleton<IToolGenerator, ToolGenerator>();
+        services.AddSingleton<IOpenApiSpecValidator, OpenApiSpecValidator>();
         services.AddSingleton<ISpecDiffService, SpecDiffService>();
         services.AddScoped<ServerSpecRefresher>();
         services.AddScoped<ISpecRefresher, SpecRefresher>();

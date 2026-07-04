@@ -28,6 +28,16 @@ public static class AdminEndpoints
         group.MapGet("/servers/{name}", async (string name, ServerManagementService svc, CancellationToken ct) =>
             Results.Ok(await svc.GetAsync(name, ct)));
 
+        group.MapPost("/servers/validate", async (
+            CreateServerRequest body,
+            IValidator<CreateServerRequest> validator,
+            ServerManagementService svc,
+            CancellationToken ct) =>
+        {
+            await ValidateAsync(validator, body);
+            return Results.Ok(await svc.ValidateAsync(body, ct));
+        });
+
         group.MapPost("/servers", async (
             CreateServerRequest body,
             IValidator<CreateServerRequest> validator,
@@ -188,6 +198,16 @@ public static class AdminExceptionMiddleware
                 ctx.Response.StatusCode = StatusCodes.Status400BadRequest;
                 ctx.Response.ContentType = "application/json";
                 await ctx.Response.WriteAsync(JsonSerializer.Serialize(new { error = "validation_failed", errors }));
+            }
+            catch (OpenApiSpecValidationException ex)
+            {
+                var issues = ex.Report.Errors
+                    .Concat(ex.Report.Warnings)
+                    .Select(i => new { pointer = i.Pointer, code = i.Code, message = i.Message, severity = i.Severity })
+                    .ToArray();
+                ctx.Response.StatusCode = StatusCodes.Status422UnprocessableEntity;
+                ctx.Response.ContentType = "application/json";
+                await ctx.Response.WriteAsync(JsonSerializer.Serialize(new { error = "openapi_spec_invalid", issues }));
             }
             catch (Exception ex) when (ctx.RequestAborted.IsCancellationRequested == false)
             {

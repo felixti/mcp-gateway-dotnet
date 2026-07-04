@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using McpGateway.Core.ServerDefinitions;
+using McpGateway.Core.ToolGeneration;
 
 namespace McpGateway.Management.Contracts;
 
@@ -47,13 +48,15 @@ public record ServerResponse(
     string? ApprovedBy,
     DateTime? LastRefreshedAt,
     DateTime CreatedAt,
-    DateTime UpdatedAt)
+    DateTime UpdatedAt,
+    IReadOnlyList<SpecValidationIssue>? Warnings = null)
 {
-    public static ServerResponse FromDomain(McpServerDefinition d) => new(
+    public static ServerResponse FromDomain(McpServerDefinition d, IReadOnlyList<SpecValidationIssue>? warnings = null) => new(
         d.Id, d.Name, d.DisplayName, d.Description, d.SpecSourceUrl, d.BaseUrl,
         d.AuthStrategy, ParseJsonObject(d.AuthConfig), d.ToolMode.ToString().ToLowerInvariant(),
         d.ClientProfile.ToString().ToLowerInvariant(), d.PollIntervalMinutes, d.Status,
-        d.ApprovalStatus, d.ApprovedAt, d.ApprovedBy, d.LastRefreshedAt, d.CreatedAt, d.UpdatedAt);
+        d.ApprovalStatus, d.ApprovedAt, d.ApprovedBy, d.LastRefreshedAt, d.CreatedAt, d.UpdatedAt,
+        warnings);
 
     private static JsonObject ParseJsonObject(string raw)
     {
@@ -123,6 +126,7 @@ public record RefreshResponse(
     bool SpecChanged,
     string SpecHash,
     DateTime LastRefreshedAt,
-    int ToolCount);
+    int ToolCount,
+    IReadOnlyList<SpecValidationIssue>? Warnings = null);
 
 public record ErrorResponse(string Error, string? Detail = null);
