@@ -36,7 +36,7 @@ No cross-environment routing inside a single gateway.
 ## Technology Stack
 
 - **Runtime / Framework**: .NET 10, ASP.NET Core, EF Core 10 (preview)
-- **MCP**: `ModelContextProtocol.AspNetCore` 2.0.0-preview.1 (SSE endpoint)
+- **MCP**: `ModelContextProtocol.AspNetCore` 2.0.0-preview.1 (Streamable HTTP endpoint)
 - **OpenAPI**: `Microsoft.OpenApi` 1.6.23 for reading 3.0 specs
 - **Auth**: Microsoft.Identity.Web for Entra ID / OBO; API-key middleware for
   legacy MCP clients

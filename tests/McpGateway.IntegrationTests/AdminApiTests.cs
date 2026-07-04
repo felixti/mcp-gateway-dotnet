@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using FluentAssertions;
+using McpGateway.Core.ToolGeneration;
 using McpGateway.Core.ToolStore;
 using McpGateway.Management.Contracts;
 using Microsoft.Extensions.DependencyInjection;
@@ -278,6 +279,76 @@ public class AdminApiTests : IClassFixture<AdminApiFactory>
         await RegisterServer(client, "diff-test");
         var resp = await client.GetAsync($"/admin/servers/diff-test/spec/diff/{Guid.NewGuid()}");
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task ValidateServer_ValidSpec_Returns200WithReport()
+    {
+        var client = CreateAdminClient();
+        var resp = await client.PostAsync("/admin/servers/validate", JsonBody(BuildCreate("validate-ok")));
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var report = await resp.Content.ReadFromJsonAsync<SpecValidationReport>();
+        report!.Errors.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ValidateServer_InvalidSpec_ReturnsReportWithErrors()
+    {
+        var client = CreateAdminClient();
+        var badSpec = """
+        {
+          "openapi": "3.0.0",
+          "info": { "title": "Bad", "version": "1.0.0" },
+          "paths": {}
+        }
+        """;
+        var request = new CreateServerRequest(
+            "validate-bad", "Bad", null, null, badSpec,
+            "https://x.example.com", "obo",
+            new JsonObject { ["resource"] = "api://x/.default" },
+            "all", "universal", 1440, AdminUpn);
+
+        var resp = await client.PostAsync("/admin/servers/validate", JsonBody(request));
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var report = await resp.Content.ReadFromJsonAsync<SpecValidationReport>();
+        report!.Errors.Should().ContainSingle(e => e.Code == "empty_paths");
+    }
+
+    [Fact]
+    public async Task ValidateServer_Unauthenticated_Returns401()
+    {
+        var client = _factory.CreateClient();
+        var resp = await client.PostAsync("/admin/servers/validate", JsonBody(BuildCreate("validate-auth")));
+        resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task UploadSpec_InvalidSpec_Returns422()
+    {
+        var client = CreateAdminClient();
+        await RegisterServer(client, "upload-bad");
+
+        var badSpec = """
+        {
+          "openapi": "3.0.0",
+          "info": { "title": "Bad", "version": "1.0.0" },
+          "paths": {}
+        }
+        """;
+        var upload = new SpecUploadRequest(badSpec, "application/json");
+        var resp = await client.PostAsync("/admin/servers/upload-bad/spec", JsonBody(upload));
+        resp.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+    }
+
+    [Fact]
+    public async Task UpdateSpecSource_InvalidUrl_Returns400()
+    {
+        var client = CreateAdminClient();
+        await RegisterServer(client, "source-bad");
+
+        var body = new SpecSourceUpdateRequest("not-a-valid-url");
+        var resp = await client.PutAsync("/admin/servers/source-bad/spec-source", JsonBody(body));
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     private static CreateServerRequest BuildCreate(string name) => new(

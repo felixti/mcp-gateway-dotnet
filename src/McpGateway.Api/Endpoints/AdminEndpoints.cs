@@ -144,9 +144,13 @@ public static class AdminEndpoints
         group.MapPut("/servers/{name}/spec-source", async (
             string name,
             SpecSourceUpdateRequest body,
+            IValidator<SpecSourceUpdateRequest> validator,
             ServerManagementService svc,
             CancellationToken ct) =>
-            Results.Ok(await svc.UpdateSpecSourceAsync(name, body, ct)));
+        {
+            await ValidateAsync(validator, body);
+            return Results.Ok(await svc.UpdateSpecSourceAsync(name, body, ct));
+        });
 
         group.MapGet("/servers/{name}/spec", async (string name, ServerManagementService svc, CancellationToken ct) =>
         {

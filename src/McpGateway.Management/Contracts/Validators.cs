@@ -127,3 +127,17 @@ public class CreateApiKeyRequestValidator : AbstractValidator<CreateApiKeyReques
             .WithMessage("At least one scope is required.");
     }
 }
+
+public class SpecSourceUpdateRequestValidator : AbstractValidator<SpecSourceUpdateRequest>
+{
+    public SpecSourceUpdateRequestValidator()
+    {
+        RuleFor(r => r.SpecSourceUrl)
+            .NotEmpty()
+            .Must(BeAValidAbsoluteHttpUrl)
+            .WithMessage("SpecSourceUrl must be an absolute http or https URL.");
+    }
+
+    private static bool BeAValidAbsoluteHttpUrl(string? url)
+        => Uri.TryCreate(url, UriKind.Absolute, out var u) && (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps);
+}

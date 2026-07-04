@@ -19,7 +19,23 @@ The gateway uses the C# MCP SDK's `MapMcp()` with a custom tool provider
 backed by the InMemoryToolStore. Each `/mcp/{server_name}` route serves only
 the tools from that server definition.
 
-Stateless mode: enabled (no server-to-client requests needed).
+### Streamable HTTP transport details
+
+The gateway exposes the 2025-06-18 MCP Streamable HTTP transport on a single
+endpoint per server definition:
+
+- **Base URL**: `POST /mcp/{server_name}`
+- **Stateless mode**: enabled. No session ID is required or maintained.
+- **Client → server**: send JSON-RPC 2.0 messages as the HTTP request body.
+- **Server → client**: the server can stream responses back as
+  Server-Sent Events (SSE) on the same POST request when the client sends
+  `Accept: application/json, text/event-stream`. Alternatively, clients can
+  open a separate `GET /mcp/{server_name}` request to receive an SSE stream.
+- **Body size limit**: 10 MB (Kestrel default).
+- **Content-Type**: `application/json` for JSON-RPC POST bodies.
+
+This is the unified Streamable HTTP transport, not the older dedicated
+`/sse` + `/message` endpoint pair.
 
 ### JSON-RPC error codes (gateway-level)
 

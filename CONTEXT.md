@@ -45,6 +45,10 @@ _Avoid_: API definition, swagger file, contract
 A per-server configuration that determines how generated tool schemas are transformed to match a specific MCP client's limitations. Values: `universal` (default — inline all $refs, split anyOf into separate tools, truncate names to 60 chars, works everywhere), `claude` (full schemas, supports anyOf at root), `cursor` (strict — 40 tool limit, 60-char names, no $refs, no anyOf). Set by admin per MCP Server Definition.
 _Avoid_: Client mode, schema mode, compatibility mode
 
+**Streamable HTTP Transport**:
+The MCP 2025-06-18 transport used by the gateway for client connections. One endpoint per MCP Server Definition at `/mcp/{server_name}`. Clients send JSON-RPC 2.0 messages via HTTP POST; the gateway streams responses back as Server-Sent Events (SSE) on the same POST or on a separate GET to the same endpoint. Stateless mode is enabled, so no session ID is required.
+_Avoid_: SSE endpoint, MCP endpoint, /sse endpoint
+
 **API Instance**:
 (Removed — one gateway deployment per environment: dev, stg, prd. No
 cross-environment routing. The base_url and auth_config live directly on the
