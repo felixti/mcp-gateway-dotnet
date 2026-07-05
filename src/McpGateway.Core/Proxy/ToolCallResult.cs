@@ -3,6 +3,7 @@ namespace McpGateway.Core.Proxy;
 public class ToolCallResult
 {
     public bool IsError { get; set; }
+    public int HttpStatus { get; set; }
     public IReadOnlyList<ToolCallContent> Content { get; set; } = [];
 }
 

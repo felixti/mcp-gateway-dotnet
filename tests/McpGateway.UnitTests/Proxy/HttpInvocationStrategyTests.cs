@@ -48,6 +48,7 @@ public class HttpInvocationStrategyTests
 
         strategy.SourceType.Should().Be(SourceType.OpenApi);
         result.IsError.Should().BeFalse();
+        result.HttpStatus.Should().Be(200);
         result.Content.Should().ContainSingle()
             .Which.Text.Should().Be("hello");
         capturedRequest.Should().NotBeNull();

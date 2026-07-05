@@ -28,6 +28,8 @@ public class HttpInvocationStrategy : IToolInvocationStrategy
     {
         var request = _requestBuilder.Build(server.BaseUrl, tool, arguments);
         var response = await _httpClient.SendAsync(request, ct);
-        return await _responseWrapper.WrapAsync(response);
+        var result = await _responseWrapper.WrapAsync(response);
+        result.HttpStatus = (int)response.StatusCode;
+        return result;
     }
 }

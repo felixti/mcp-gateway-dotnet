@@ -13,9 +13,7 @@ public class ToolCallHandler
     public const string HttpClientName = "McpToolProxy";
 
     private readonly IToolStore _toolStore;
-    private readonly HttpRequestBuilder _requestBuilder;
-    private readonly ResponseWrapper _responseWrapper;
-    private readonly HttpClient _httpClient;
+    private readonly IReadOnlyDictionary<SourceType, IToolInvocationStrategy> _strategies;
     private readonly IAuditEmitter _auditEmitter;
     private readonly TimeProvider _timeProvider;
     private readonly ToolCallContextAccessor _contextAccessor;
@@ -23,18 +21,14 @@ public class ToolCallHandler
 
     public ToolCallHandler(
         IToolStore toolStore,
-        HttpRequestBuilder requestBuilder,
-        ResponseWrapper responseWrapper,
-        HttpClient httpClient,
+        IEnumerable<IToolInvocationStrategy> strategies,
         IAuditEmitter auditEmitter,
         TimeProvider timeProvider,
         ToolCallContextAccessor contextAccessor,
         IInFlightCallTracker inFlightCallTracker)
     {
         _toolStore = toolStore;
-        _requestBuilder = requestBuilder;
-        _responseWrapper = responseWrapper;
-        _httpClient = httpClient;
+        _strategies = strategies.ToDictionary(s => s.SourceType);
         _auditEmitter = auditEmitter;
         _timeProvider = timeProvider;
         _contextAccessor = contextAccessor;
@@ -65,14 +59,18 @@ public class ToolCallHandler
         var argumentsJson = System.Text.Json.JsonSerializer.Serialize(arguments);
         activity?.SetTag("mcp.tool.arguments", argumentsJson);
 
-        var request = _requestBuilder.Build(server.BaseUrl, tool, arguments);
-        var response = await _httpClient.SendAsync(request, ct);
-        var result = await _responseWrapper.WrapAsync(response);
+        if (!_strategies.TryGetValue(server.SourceType, out var strategy))
+        {
+            throw new InvalidOperationException(
+                $"No tool invocation strategy registered for source type '{server.SourceType.ToCanonicalString()}'.");
+        }
+
+        var result = await strategy.InvokeAsync(server, tool, arguments, ct);
 
         var elapsed = _timeProvider.GetElapsedTime(startedAt);
         var latencyMs = (long)elapsed.TotalMilliseconds;
 
-        activity?.SetTag("mcp.tool.http_status", (int)response.StatusCode);
+        activity?.SetTag("mcp.tool.http_status", result.HttpStatus);
         activity?.SetTag("mcp.tool.is_error", result.IsError);
 
         TelemetryMetrics.ToolCallCount.Add(1,
@@ -96,7 +94,7 @@ public class ToolCallHandler
             context,
             argumentsJson,
             result,
-            (int)response.StatusCode,
+            result.HttpStatus,
             latencyMs,
             ct);
 

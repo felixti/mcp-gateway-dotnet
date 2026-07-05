@@ -26,14 +26,21 @@ public static class ProxyServiceExtensions
             .AddPolicyHandler(GetRetryPolicy())
             .AddPolicyHandler(GetCircuitBreakerPolicy());
 
-        services.AddScoped<ToolCallHandler>(provider =>
+        services.AddScoped<HttpInvocationStrategy>(provider =>
         {
             var factory = provider.GetRequiredService<IHttpClientFactory>();
-            return new ToolCallHandler(
-                provider.GetRequiredService<IToolStore>(),
+            return new HttpInvocationStrategy(
                 provider.GetRequiredService<HttpRequestBuilder>(),
                 provider.GetRequiredService<ResponseWrapper>(),
-                factory.CreateClient(ToolCallHandler.HttpClientName),
+                factory.CreateClient(ToolCallHandler.HttpClientName));
+        });
+        services.AddScoped<IToolInvocationStrategy>(provider => provider.GetRequiredService<HttpInvocationStrategy>());
+
+        services.AddScoped<ToolCallHandler>(provider =>
+        {
+            return new ToolCallHandler(
+                provider.GetRequiredService<IToolStore>(),
+                provider.GetRequiredService<IEnumerable<IToolInvocationStrategy>>(),
                 provider.GetRequiredService<IAuditEmitter>(),
                 provider.GetRequiredService<TimeProvider>(),
                 provider.GetRequiredService<ToolCallContextAccessor>(),
