@@ -14,6 +14,7 @@ public class McpServerDefinition
     public string AuthConfig { get; set; } = "{}";
     public ToolMode ToolMode { get; set; } = ToolMode.All;
     public ClientProfile ClientProfile { get; set; } = ClientProfile.Universal;
+    public SourceType SourceType { get; set; } = SourceType.OpenApi;
     public int PollIntervalMinutes { get; set; } = 1440;
     public string Status { get; set; } = "active";
     public string ApprovalStatus { get; set; } = "pending";
