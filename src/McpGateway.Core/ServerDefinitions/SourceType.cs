@@ -1,8 +1,5 @@
-using System.Text.Json.Serialization;
-
 namespace McpGateway.Core.ServerDefinitions;
 
-[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum SourceType
 {
     OpenApi,
