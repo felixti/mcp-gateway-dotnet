@@ -2,14 +2,17 @@
 
 ## Overview
 
-The MCP Gateway is a control plane that transforms any web API's OpenAPI
-specification into an MCP (Model Context Protocol) server. MCP clients (Claude
-Desktop, Cursor, Claude Code, Codex CLI, custom apps) connect to the gateway,
-discover tools generated from the spec, and invoke them. The gateway proxies
-each tool call to the underlying API via HttpClient + Polly, handling auth
-injection (OBO/passthrough/static), audit, and telemetry.
+The MCP Gateway is a control plane that turns backends into MCP (Model Context
+Protocol) servers. It supports two **source types**: `openapi` (generates tools
+from an OpenAPI 3.0+ specification and proxies calls as HTTP) and `mcp-upstream`
+(imports an existing MCP server's tool catalog and forwards calls as JSON-RPC).
+MCP clients (Claude Desktop, Cursor, Claude Code, Codex CLI, custom apps)
+connect to the gateway, discover tools, and invoke them. The gateway handles
+auth injection (OBO/passthrough/static), approval, audit, and telemetry.
 
-The underlying APIs are unchanged — no MCP SDK required on the API side.
+For `openapi` servers the underlying APIs are unchanged — no MCP SDK required on
+the API side. For `mcp-upstream` servers the gateway acts as an MCP client to
+the upstream server, re-hosting its catalog behind one approval/audit/auth plane.
 
 ## System diagram
 
@@ -34,12 +37,15 @@ The underlying APIs are unchanged — no MCP SDK required on the API side.
 │  ┌─────────────────────────────────────────────────────────────┐ │
 │  │                     Core Pipeline                            │ │
 │  │                                                               │ │
-│  │  Auth ──► Resolve Server ──► Resolve Tool ──► Build HTTP     │ │
-│  │    │                                          │              │ │
-│  │    │                                          ▼              │ │
-│  │    │   ◄─── Wrap Response ◄─── Proxy HTTP ◄── HttpClient    │ │
-│  │    │                                          + Polly        │ │
-│  │    │                                          + Auth Handler  │ │
+│  │  Auth ──► Resolve Server ──► Resolve Tool ──► Strategy         │ │
+│  │    │                           dispatch by SourceType          │ │
+│  │    │                                │                          │ │
+│  │    │                    ┌───────────┴───────────┐              │ │
+│  │    │                    ▼                       ▼              │ │
+│  │    │     HttpInvocationStrategy     McpUpstreamInvocation      │ │
+│  │    │       Build HTTP + Proxy        Strategy                  │ │
+│  │    │       HttpClient + Polly         SdkMcpUpstreamClient     │ │
+│  │    │       + Auth Handler            JSON-RPC tools/call       │ │
 │  │    │                                                         │ │
 │  │    ├──► OBO Token Exchange ──► Entra ID                      │ │
 │  │    ├──► Audit Emitter ────► Azure Storage Queue              │ │
@@ -62,11 +68,9 @@ The underlying APIs are unchanged — no MCP SDK required on the API side.
 │  └─────────────────────────────────────────────────────────────┘ │
 └──────────────────────────┬────────────────────────────────────────┘
                            │
-              ┌────────────┼────────────┐
-              ▼            ▼            ▼
      ┌──────────────┐ ┌─────────┐ ┌──────────────────┐
      │ PostgreSQL   │ │ Azure   │ │  Underlying APIs  │
-     │ (ai_gateway) │ │ Storage │ │  (any OpenAPI 3+) │
+     │ (ai_gateway) │ │ Storage │ │  (OpenAPI / MCP)  │
      │              │ │ Queue   │ │                   │
      │ 5 tables:    │ └─────────┘ └──────────────────┘
      │ - mcp_       │
@@ -107,9 +111,18 @@ The pipeline spine. Contains:
 - **ToolStore** — IToolStore interface + InMemoryToolStore
   (ConcurrentDictionary). The runtime truth for tools/list and tools/call.
   ToolStoreInitializer loads approved server definitions from PG at startup.
-- **Proxy** — ToolCallHandler (the core: tool name + args → HTTP request →
-  response → CallToolResult), HttpRequestBuilder, ResponseWrapper (truncation,
-  isError for non-2xx), MetaToolsHandler (dynamic mode meta-tools).
+- **Proxy** — ToolCallHandler dispatches by `SourceType` to the matching
+  IToolInvocationStrategy. For `openapi`: HttpInvocationStrategy builds an HTTP
+  request (HttpRequestBuilder), proxies via HttpClient + Polly + AuthDelegatingHandler,
+  wraps the response (ResponseWrapper — truncation, isError for non-2xx). For
+  `mcp-upstream`: McpUpstreamInvocationStrategy forwards the call via
+  SdkMcpUpstreamClient (real MCP SDK client over Streamable HTTP).
+  MetaToolsHandler provides dynamic-mode meta-tools. ToolCallResult carries
+  HttpStatus for audit/telemetry.
+- **McpUpstream** — UpstreamCatalogImporter (pure mapper: upstream `tools/list`
+  → ToolDefinition with null HTTP coords), IMcpUpstreamClient / SdkMcpUpstreamClient
+  (MCP SDK client: ListToolsAsync + CallToolAsync over Streamable HTTP transport),
+  UpstreamTool (DTO: name, description, JsonNode? input schema).
 - **Auth** — OboTokenExchange (Entra ID OBO flow), OboTokenCache (LRU + TTL),
   AuthStrategyResolver (OBO/passthrough/static per server definition),
   AuthDelegatingHandler (injects auth header into HttpClient pipeline).
@@ -122,14 +135,20 @@ The pipeline spine. Contains:
 
 DbContext with `HasDefaultSchema("ai_gateway")`. 5 tables (mcp_server_defs,
 tools, tool_overrides, gateway_api_keys, spec_versions). Repository pattern
-over EF Core. Migrations are SQL-scripted for DBA ticket process (ADR-0004).
+over EF Core. Migrations are EF Core migration classes applied via
+`Database.MigrateAsync()` (the InitialCreate migration + additive migrations
+like AddSourceTypeAndNullableToolCoords). `SourceType` is stored as a canonical
+string (`openapi` / `mcp-upstream`) via a ValueConverter; tool `HttpMethod` /
+`HttpPath` are nullable to support `mcp-upstream` tools.
 
 ### McpGateway.McpSdk (wrapper over C# MCP SDK)
 
-DynamicToolProvider — custom IMcpServerTool implementation that delegates to
-IToolStore instead of compile-time attribute-based registration. This is the
-hot-reload mechanism (ADR-0003). McpEndpointMapper maps `/mcp/{server_name}`
-routes with per-server tool sets.
+McpSdkServiceExtensions configures the MCP server with custom `tools/list`
+and `tools/call` handlers that delegate to IToolStore and ToolCallHandler
+respectively. `MapMcpGateway` maps `/mcp/{server_name}` routes. The call
+handler resolves the server from the store, checks approval, then dispatches
+to ToolCallHandler which selects the invocation strategy by SourceType.
+Stateless Streamable HTTP mode is used (no session ID required).
 
 ### McpGateway.Management (management API logic)
 
@@ -163,23 +182,32 @@ McpEndpointMapper
   │  Check approval_status — reject with -32005 if not approved
   │
   ▼
-DynamicToolProvider
+McpSdkServiceExtensions (tools/call handler)
   │  Look up tool by name in IToolStore
-  │  Reject with -32003 if not found, -32004 if not visible
+  │  Reject if not found or not visible
   │
   ▼
 ToolCallHandler
-  │  1. Build HTTP request (HttpRequestBuilder)
-  │     - path params → URL, query params → query string, body → request body
-  │  2. Resolve auth strategy (AuthStrategyResolver)
-  │     - OBO: OboTokenExchange → Entra ID → scoped M2M token (cached)
-  │     - passthrough: forward caller JWT directly
-  │     - static: use stored API key
-  │  3. AuthDelegatingHandler injects Authorization header
-  │  4. HttpClient + Polly: send request (retry, circuit breaker, timeout)
-  │  5. ResponseWrapper: parse HTTP response → MCP CallToolResult
-  │     - 2xx: content blocks with response body (truncated to 10KB)
-  │     - non-2xx: isError=true, content: "[HTTP {status}] {body}"
+  │  Select IToolInvocationStrategy by server.SourceType:
+  │
+  │  ┌─ openapi → HttpInvocationStrategy ──────────────────────┐
+  │  │  1. Build HTTP request (HttpRequestBuilder)              │
+  │  │  2. Resolve auth strategy (AuthStrategyResolver)         │
+  │  │     - OBO: OboTokenExchange → Entra ID → scoped token    │
+  │  │     - passthrough: forward caller JWT directly           │
+  │  │     - static: use stored API key                         │
+  │  │  3. AuthDelegatingHandler injects Authorization header   │
+  │  │  4. HttpClient + Polly: send request (retry, CB, timeout)│
+  │  │  5. ResponseWrapper: HTTP response → CallToolResult      │
+  │  │     - 2xx: content blocks with body (truncated to 10KB)  │
+  │  │     - non-2xx: isError=true, "[HTTP {status}] {body}"   │
+  │  └──────────────────────────────────────────────────────────┘
+  │
+  │  ┌─ mcp-upstream → McpUpstreamInvocationStrategy ─────────┐
+  │  │  SdkMcpUpstreamClient connects to upstream via         │
+  │  │  Streamable HTTP, forwards tools/call as JSON-RPC,     │
+  │  │  maps result content blocks → CallToolResult           │
+  │  └──────────────────────────────────────────────────────────┘
   │
   ▼
 AuditEmitter (fire-and-forget)
@@ -197,16 +225,26 @@ MCP Client
 Admin
   │
   │  POST /admin/servers
-  │  Body: {name, spec_source_url or spec_content, base_url, auth_strategy, auth_config}
+  │  Body: {name, source_type, spec_source_url|upstream_url, base_url, ...}
   │  Auth: Bearer <Entra ID JWT> with admin role
   │
   ▼
-ServerManagementService
-  │  1. Fetch + parse spec (SpecFetcher → OpenApiParser)
-  │  2. Generate tools (ToolGenerator + SchemaTransformer)
-  │  3. Store in PG: mcp_server_defs (approval_status='pending'), tools
-  │  4. Store spec snapshot in spec_versions
-  │  5. Return server definition with tool list for review
+ServerManagementService.RegisterAsync
+  │  Branch on source_type:
+  │
+  │  ┌─ openapi (default) ─────────────────────────────────────┐
+  │  │  1. Fetch + parse spec (SpecFetcher → OpenApiParser)     │
+  │  │  2. Generate tools (ToolGenerator + SchemaTransformer)   │
+  │  └──────────────────────────────────────────────────────────┘
+  │
+  │  ┌─ mcp-upstream ──────────────────────────────────────────┐
+  │  │  1. Connect to upstream via SdkMcpUpstreamClient         │
+  │  │  2. Call upstream tools/list                              │
+  │  │  3. Import catalog via UpstreamCatalogImporter            │
+  │  │     (tools get null HttpMethod/HttpPath)                  │
+  │  └──────────────────────────────────────────────────────────┘
+  │
+  │  Store in PG: mcp_server_defs (source_type, approval_status='pending'), tools
   │
   ▼
 Admin reviews tools
@@ -345,14 +383,17 @@ Telemetry span shows incomplete call — detectable in monitoring.
                     │  InMemoryToolStore        │
                     │  (ConcurrentDictionary)   │
                     │                           │
-  MCP Client ──────►│  tools/list reads here    │────► ToolCallHandler
-  (read + call)     │  tools/call reads here    │      │
-                    └──────────────────────────┘      │
-                                                      ▼
-                                               HttpClient + Polly
-                                                      │
-                                                      ▼
-                                               Underlying API
+  MCP Client ──────►│  tools/list reads here    │──► ToolCallHandler
+  (read + call)     │  tools/call reads here    │    │ strategy dispatch
+                    └──────────────────────────┘    │ by SourceType
+                                                     │
+                              ┌──────────────────────┴──────────────────────┐
+                              ▼                                              ▼
+                    HttpInvocationStrategy                       McpUpstreamInvocationStrategy
+                    (HttpClient + Polly + Auth)                   (SdkMcpUpstreamClient → JSON-RPC)
+                              │                                              │
+                              ▼                                              ▼
+                    Underlying API (HTTP)                           Upstream MCP Server
                                                       │
                                                       ▼
                                                Audit Emitter
@@ -397,7 +438,7 @@ Unapproved servers return JSON-RPC error -32005 on tools/call.
 |-----------|-----------|
 | Runtime | .NET 10 (ASP.NET Core 10) |
 | Language | C# 13 |
-| MCP SDK | ModelContextProtocol.AspNetCore (C# SDK) |
+| MCP SDK | ModelContextProtocol 2.0.0-preview.1 (server: AspNetCore; client: upstream MCP calls) |
 | OpenAPI parser | Microsoft.OpenApi |
 | ORM | EF Core 10 |
 | Database | PostgreSQL 18 |
