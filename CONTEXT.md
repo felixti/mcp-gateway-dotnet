@@ -1,36 +1,47 @@
 # MCP Gateway (.NET 10)
 
-An MCP (Model Context Protocol) gateway built with .NET 10 that accepts any web
-API's OpenAPI specification, dynamically generates an MCP Server definition from
-it, and proxies MCP tool calls to the underlying API via HttpClient + Polly. The
-gateway is the control plane — it parses specs, generates tools, manages auth
-injection (OBO/passthrough/static), and routes calls. YARP is used only for the
-management API surface. The underlying APIs are unchanged.
+An MCP (Model Context Protocol) gateway built with .NET 10 that turns backends
+into MCP servers a client can call through one governed entrypoint. It accepts
+either an OpenAPI 3.0+ specification (generating tools from each operation) or
+an already-existing MCP server (re-hosting its tool catalog), then proxies MCP
+tool calls to the underlying backend. The gateway is the control plane — it
+parses specs / imports catalogs, generates tools, and manages auth injection
+(OBO / credential), approval, audit, and telemetry. In production it sits
+behind an AI gateway that forwards a user-attributed Entra assertion. The
+underlying backends are unchanged.
 
 ## Language
 
 ### Access Control
 
 **Auth Strategy**:
-The method the gateway uses to authenticate to an underlying API Instance. Three strategies, configured per API Instance: (1) OBO token exchange (default for internal company APIs) — the gateway takes the caller's Entra ID token and exchanges it for a scoped M2M (machine-to-machine) token for the target API via Entra ID OBO flow. The MCP tool handler carries the exchanged token in the Authorization header. Per-user attribution preserved end-to-end. (2) Token passthrough — the caller's Entra ID token is forwarded directly to the API. Only works when both gateway and API share the same Entra ID app registration. (3) Static credentials — gateway stores API key or bearer token per API Instance. Every tool call uses the same credential. No per-user attribution.
+The method the gateway uses to authenticate to an upstream backend, configured per MCP Server Definition. Two strategies: (1) `obo` — the gateway takes the Propagated Principal's Entra assertion and exchanges it (Entra ID OBO flow) for a scoped token for the target's Entra-registered app, carried in the Authorization header. Works for any Entra-registered target — internal APIs, Azure DevOps, Databricks Genie (when Entra-federated), ServiceNow (when Entra-federated at the API edge). Per-user attribution preserved end-to-end. `passthrough` (forward the caller token directly, no exchange) is a degenerate `obo`, retained as a documented alias for back-compat. (2) `credential` — the gateway stores a token or OAuth client-credentials per definition and calls as itself (a service principal), used for non-federated targets (Salesforce, unfederated ServiceNow / Databricks). Upstream per-user attribution is lost; gateway-side audit attribution is still preserved.
 _Avoid_: Auth method, auth type, credential type
 
 **Gateway Auth**:
-The method MCP clients use to authenticate to the gateway itself. Two paths: (1) Entra ID JWT — for clients that support bearer tokens (Claude Code, custom apps, Codex CLI). Gateway validates against JWKS. (2) Gateway API key — for MCP clients that don't support bearer tokens (Claude Desktop, Cursor). Keys are scoped to specific MCP Server Definitions (a key for `/mcp/invoice` cannot access `/mcp/user`). Pragmatic hybrid: use Entra ID where possible, API keys where necessary.
+How the AI gateway authenticates to the MCP gateway (service-to-service), since the MCP gateway sits behind the AI gateway in production (topology: client → AI gateway → MCP gateway → upstream). Two paths: (1) Entra ID client-credentials JWT — the AI gateway presents its own Entra app token; the MCP gateway validates against JWKS. (2) Gateway API key — `X-Gateway-Key: mgk_…`, scoped to specific MCP Server Definitions. The human or service principal the call is made on behalf of rides inside as a Propagated Principal, not as the direct caller.
 _Avoid_: Client auth, gateway authentication, MCP auth
 
+**Propagated Principal**:
+The human (Entra ID user) or service principal (Entra ID app registration) on whose behalf a call is made, propagated through the AI gateway to the MCP gateway as a user-attributed Entra assertion. Identified by claims in the assertion; recorded in the Audit Trail as the caller. Distinct from Gateway Auth, which authenticates the AI gateway itself. The assertion must be audience'd to the MCP gateway for the OBO Handler to exchange it.
+_Avoid_: End user, caller (ambiguous — use Propagated Principal for the human / SP behind a call), upstream identity
+
 **OBO Handler**:
-The gateway component that performs the Entra ID On-Behalf-Of token exchange. Takes the caller's JWT, validates it, requests a new access token scoped to the target API's resource (e.g., `api://invoice-api/.default`) via the OBO flow. The exchanged token is cached with TTL (Redis or in-memory) and refreshed before expiry. Synchronous fallback on cache miss (same pattern as Gateway Zero ADR-0005).
+The gateway component that performs the Entra ID On-Behalf-Of token exchange. Takes the Propagated Principal's assertion (a human's user JWT or a service principal's client assertion), validates it, and requests a new access token scoped to the target backend's Entra app (e.g. `api://invoice-api/.default`, or the Databricks Azure AD app) via the OBO flow. The exchanged token is cached with TTL and refreshed before expiry; synchronous fallback on cache miss. Works for any Entra-registered target; the engine is vendor-agnostic and driven entirely by the scope in AuthConfig.
 _Avoid_: Token exchanger, token service
 
 ### Core Concepts
 
 **MCP Server Definition**:
-A set of MCP tools generated from a single OpenAPI specification. One OpenAPI spec = one MCP Server Definition. Each definition contains tools, routing config, and auth configuration. Stored in PostgreSQL (original spec as JSONB + derived tool definitions as JSONB), loaded at gateway startup, hot-addable at runtime. On refresh, the gateway diffs old vs new spec, updates derived definitions, and retains the latest spec version for audit and re-generation. New server definitions and spec-refresh changes require admin approval before tools are served to MCP clients — the gateway returns JSON-RPC error -32005 for unapproved server definitions.
-_Avoid_: MCP server (ambiguous — could mean the runtime process or the definition)
+A managed set of MCP tools exposed by the gateway at `/mcp/{server_name}`. Has a Source Type that determines where its tools come from — `openapi` (generated from an OpenAPI 3.0+ specification) or `mcp-upstream` (imported by re-hosting an existing MCP server's tool catalog). Each definition contains tools, routing config, and auth configuration. Stored in PostgreSQL (source content + derived tool definitions as JSONB), loaded at gateway startup, hot-addable at runtime. On refresh, the gateway diffs old vs new tools and retains the latest source version for audit. New definitions and refresh changes require admin approval before tools are served — the gateway returns JSON-RPC error -32005 for unapproved definitions.
+_Avoid_: MCP server (ambiguous — could mean the runtime process, an upstream MCP server, or the definition)
+
+**Source Type**:
+The origin of a definition's tools. Values: `openapi` — tools generated from an OpenAPI 3.0+ Spec Source; `mcp-upstream` — tools imported by re-hosting an existing MCP server's catalog (internal MCP servers or third-party ones like Azure DevOps, Databricks Genie, ServiceNow, Salesforce). Determines the refresh mechanism (spec re-fetch vs `tools/list` re-call) and the invocation transport (HTTP vs JSON-RPC).
+_Avoid_: Backend type, server kind, source mode
 
 **Tool**:
-A single MCP tool generated from one (path, method) pair in an OpenAPI specification. Has a name, description, input schema (JSON Schema), output schema (first 2xx response), and a handler that proxies to the underlying API endpoint via HttpClient. Tool exposure is configurable per MCP Server Definition via Tool Mode: `all` (expose every operation as a tool, default), `dynamic` (meta-tools pattern — list/get/invoke for large APIs >40 operations), `curated` (admin selects which operations become tools, excludes admin/debug/deprecated endpoints).
+A single MCP tool exposed by a definition. For `openapi` definitions, generated from one (path, method) pair — has HttpMethod / HttpPath and is proxied as an HTTP call. For `mcp-upstream` definitions, imported from the upstream server's `tools/list` — has a name + input schema and is forwarded as a JSON-RPC `tools/call`. Both shapes carry a description, input schema, output schema (where available), and visibility. Tool exposure is configurable per definition via Tool Mode.
 _Avoid_: Endpoint, operation, function
 
 **Tool Mode**:
@@ -38,7 +49,7 @@ Per-server configuration that controls how operations from the OpenAPI spec are 
 _Avoid_: Tool strategy, tool selection, exposure mode
 
 **Spec Source**:
-The OpenAPI document (file or URL) that the gateway parses to generate an MCP Server Definition. Must be OpenAPI 3.0+ (JSON or YAML). The spec is the single source of truth — when it changes, the MCP Server Definition is regenerated.
+The OpenAPI document (file or URL) that the gateway parses to generate tools for an `openapi` MCP Server Definition. Must be OpenAPI 3.0+ (JSON or YAML). The spec is the single source of truth for that definition — when it changes, the tools are regenerated. Not applicable to `mcp-upstream` definitions, whose source is the upstream server's live `tools/list`.
 _Avoid_: API definition, swagger file, contract
 
 **Client Profile**:
@@ -60,7 +71,7 @@ environment name: dev, stg, prd)
 ### Audit
 
 **Audit Trail**:
-Every MCP tool call is logged with: caller identity, gateway auth method (Entra ID or API key), auth strategy used (OBO/passthrough/static), target API Instance, tool name, arguments, response (truncated to 10KB), HTTP status, latency, timestamp. Emitted to Azure Storage Queue via fire-and-forget (same pipeline as Gateway Zero). At-least-once delivery with local disk fallback if queue is unavailable. Required because AI-driven actions (e.g., agent calling `delete_invoice`) must be auditable.
+Every MCP tool call is logged with: Propagated Principal identity (human or service principal) + type, gateway auth method (Entra ID or API key), auth strategy used (obo / credential), target backend, tool name, arguments, response (truncated to 10KB), HTTP status / JSON-RPC error, latency, timestamp. Emitted to Azure Storage Queue via fire-and-forget (same pipeline as Gateway Zero). At-least-once delivery with local disk fallback if queue is unavailable. Required because AI-driven actions (e.g., agent calling `delete_invoice`) must be auditable. Gateway-side attribution is recorded for every source type and auth strategy, including `credential` where upstream attribution is lost.
 _Avoid_: Tool log, call log, MCP log
 
 ### Observability
