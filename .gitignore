@@ -264,3 +264,6 @@ secrets.json
 
 # Bruno local environment secrets (keep samples, ignore real secrets)
 bruno/*/environments/*.local.bru
+
+# Local git worktrees used by agent execution
+.worktrees/
