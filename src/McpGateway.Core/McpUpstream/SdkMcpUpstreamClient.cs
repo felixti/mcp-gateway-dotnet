@@ -11,22 +11,28 @@ namespace McpGateway.Core.McpUpstream;
 
 public sealed class SdkMcpUpstreamClient : IMcpUpstreamClient
 {
-    private readonly ILoggerFactory _loggerFactory;
+    private readonly Func<string, CancellationToken, Task<IMcpClientSession>> _sessionFactory;
 
     public SdkMcpUpstreamClient(ILoggerFactory? loggerFactory = null)
     {
-        _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
+        var lf = loggerFactory ?? NullLoggerFactory.Instance;
+        _sessionFactory = (endpoint, ct) => CreateRealSessionAsync(endpoint, lf, ct);
+    }
+
+    internal SdkMcpUpstreamClient(Func<string, CancellationToken, Task<IMcpClientSession>> sessionFactory)
+    {
+        _sessionFactory = sessionFactory;
     }
 
     public async Task<IReadOnlyList<UpstreamTool>> ListToolsAsync(string endpoint, CancellationToken ct = default)
     {
-        await using var client = await ConnectAsync(endpoint, ct).ConfigureAwait(false);
-        var tools = await client.ListToolsAsync(new RequestOptions(), ct).ConfigureAwait(false);
+        await using var session = await _sessionFactory(endpoint, ct).ConfigureAwait(false);
+        var tools = await session.ListToolsAsync(ct).ConfigureAwait(false);
 
         return tools.Select(t => new UpstreamTool(
             t.Name,
             t.Description,
-            ToJsonNode(t.JsonSchema))).ToList();
+            ToJsonNode(t.InputSchema))).ToList();
     }
 
     public async Task<ToolCallResult> CallToolAsync(
@@ -35,18 +41,16 @@ public sealed class SdkMcpUpstreamClient : IMcpUpstreamClient
         IReadOnlyDictionary<string, object?> arguments,
         CancellationToken ct = default)
     {
-        await using var client = await ConnectAsync(endpoint, ct).ConfigureAwait(false);
-        var result = await client.CallToolAsync(
-            toolName,
-            arguments,
-            progress: null,
-            new RequestOptions(),
-            ct).ConfigureAwait(false);
+        await using var session = await _sessionFactory(endpoint, ct).ConfigureAwait(false);
+        var result = await session.CallToolAsync(toolName, arguments, ct).ConfigureAwait(false);
 
         return MapResult(result);
     }
 
-    private async Task<McpClient> ConnectAsync(string endpoint, CancellationToken ct)
+    private static async Task<IMcpClientSession> CreateRealSessionAsync(
+        string endpoint,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
     {
         var transport = new HttpClientTransport(
             new HttpClientTransportOptions
@@ -54,14 +58,15 @@ public sealed class SdkMcpUpstreamClient : IMcpUpstreamClient
                 Endpoint = new Uri(endpoint),
                 TransportMode = HttpTransportMode.StreamableHttp
             },
-            _loggerFactory);
+            loggerFactory);
 
         var options = new McpClientOptions
         {
             ClientInfo = new Implementation { Name = "McpGateway", Version = "1.0.0" }
         };
 
-        return await McpClient.CreateAsync(transport, options, _loggerFactory, ct).ConfigureAwait(false);
+        var client = await McpClient.CreateAsync(transport, options, loggerFactory, ct).ConfigureAwait(false);
+        return new McpClientSession(client);
     }
 
     private static ToolCallResult MapResult(CallToolResult result)
@@ -108,5 +113,49 @@ public sealed class SdkMcpUpstreamClient : IMcpUpstreamClient
         }
 
         return JsonNode.Parse(schema.GetRawText());
+    }
+}
+
+internal interface IMcpClientSession : IAsyncDisposable
+{
+    Task<IReadOnlyList<Tool>> ListToolsAsync(CancellationToken ct);
+
+    Task<CallToolResult> CallToolAsync(
+        string toolName,
+        IReadOnlyDictionary<string, object?> arguments,
+        CancellationToken ct);
+}
+
+internal sealed class McpClientSession : IMcpClientSession
+{
+    private readonly McpClient _client;
+
+    public McpClientSession(McpClient client)
+    {
+        _client = client;
+    }
+
+    public async Task<IReadOnlyList<Tool>> ListToolsAsync(CancellationToken ct)
+    {
+        var tools = await _client.ListToolsAsync(new RequestOptions(), ct).ConfigureAwait(false);
+        return tools.Select(t => t.ProtocolTool).ToList();
+    }
+
+    public Task<CallToolResult> CallToolAsync(
+        string toolName,
+        IReadOnlyDictionary<string, object?> arguments,
+        CancellationToken ct)
+    {
+        return _client.CallToolAsync(
+            toolName,
+            arguments,
+            progress: null,
+            new RequestOptions(),
+            ct).AsTask();
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        return _client.DisposeAsync();
     }
 }

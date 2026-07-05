@@ -7,6 +7,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="McpGateway.UnitTests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\McpGateway.Telemetry\McpGateway.Telemetry.csproj" />
   </ItemGroup>
 
