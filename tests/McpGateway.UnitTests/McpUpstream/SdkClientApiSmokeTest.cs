@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 
 namespace McpGateway.UnitTests.McpUpstream;
@@ -15,5 +16,10 @@ public class SdkClientApiSmokeTest
         _ = typeof(HttpClientTransport);
         _ = typeof(HttpClientTransportOptions);
         _ = HttpTransportMode.StreamableHttp;
+
+        // Record the factory signature needed by Task 7 so any SDK change breaks the build.
+        Func<IClientTransport, McpClientOptions, ILoggerFactory, CancellationToken, Task<McpClient>> createFactory
+            = McpClient.CreateAsync;
+        _ = createFactory;
     }
 }
