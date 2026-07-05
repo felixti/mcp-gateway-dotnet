@@ -46,6 +46,23 @@ public class HttpRequestBuilderTests
         body.Should().Contain("Alice");
     }
 
+    [Fact]
+    public void Build_throws_when_tool_has_no_http_coordinates()
+    {
+        var tool = new ToolDefinition
+        {
+            ToolName = "non_http_tool",
+            Description = "Not backed by HTTP",
+            InputSchema = "{}"
+        };
+        var args = new Dictionary<string, object?>();
+
+        var act = () => _builder.Build("https://api.example.com", tool, args);
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("Tool 'non_http_tool' has no HTTP coordinates; it is not an OpenAPI-backed tool.");
+    }
+
     private static ToolDefinition CreateTool(string method, string path) => new()
     {
         ToolName = "test_tool",

@@ -8,6 +8,11 @@ public class HttpRequestBuilder
 {
     public HttpRequestMessage Build(string baseUrl, ToolDefinition tool, IReadOnlyDictionary<string, object?> arguments)
     {
+        if (string.IsNullOrWhiteSpace(tool.HttpPath) || string.IsNullOrWhiteSpace(tool.HttpMethod))
+        {
+            throw new InvalidOperationException($"Tool '{tool.ToolName}' has no HTTP coordinates; it is not an OpenAPI-backed tool.");
+        }
+
         var path = SubstitutePathParameters(tool.HttpPath, arguments);
         var query = BuildQueryString(tool.HttpPath, arguments);
         var uri = new Uri(new Uri(baseUrl.TrimEnd('/') + "/"), path.TrimStart('/') + query);
