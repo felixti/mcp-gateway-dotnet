@@ -68,8 +68,8 @@ public record ServerResponse(
 public record ToolResponse(
     string ToolName,
     string Description,
-    string HttpMethod,
-    string HttpPath,
+    string? HttpMethod,
+    string? HttpPath,
     JsonObject InputSchema,
     JsonObject? OutputSchema,
     bool Visible,

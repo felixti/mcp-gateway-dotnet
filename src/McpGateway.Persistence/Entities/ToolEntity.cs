@@ -6,8 +6,8 @@ public class ToolEntity
     public Guid ServerDefinitionId { get; set; }
     public string ToolName { get; set; } = null!;
     public string Description { get; set; } = null!;
-    public string HttpMethod { get; set; } = null!;
-    public string HttpPath { get; set; } = null!;
+    public string? HttpMethod { get; set; }
+    public string? HttpPath { get; set; }
     public string InputSchema { get; set; } = null!;
     public string? OutputSchema { get; set; }
     public string AuthConfig { get; set; } = "{}";
