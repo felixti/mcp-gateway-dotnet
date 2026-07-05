@@ -53,6 +53,42 @@ public class RepositoryTests
     }
 
     [Fact]
+    public async Task ServerDefinitionRepository_McpUpstreamServerWithNullToolCoords_RoundTrips()
+    {
+        var repo = CreateServerRepo();
+        var server = new McpServerDefinition
+        {
+            Name = "mcp-upstream-test",
+            DisplayName = "MCP Upstream Test",
+            SpecContent = "{}",
+            SpecHash = "hash",
+            BaseUrl = "https://mcp.example.com",
+            SourceType = SourceType.McpUpstream,
+            Tools =
+            [
+                new ToolDefinition
+                {
+                    ToolName = "upstream_tool",
+                    Description = "Upstream tool without HTTP coords",
+                    InputSchema = "{}",
+                    HttpMethod = null,
+                    HttpPath = null
+                }
+            ]
+        };
+
+        var added = await repo.AddAsync(server);
+        var retrieved = await repo.GetByNameAsync("mcp-upstream-test");
+
+        retrieved.Should().NotBeNull();
+        retrieved!.SourceType.Should().Be(SourceType.McpUpstream);
+        retrieved.Tools.Should().ContainSingle();
+        var tool = retrieved.Tools.Single();
+        tool.HttpMethod.Should().BeNull();
+        tool.HttpPath.Should().BeNull();
+    }
+
+    [Fact]
     public async Task ServerDefinitionRepository_ListApprovedOnlyReturnsApproved()
     {
         var repo = CreateServerRepo();

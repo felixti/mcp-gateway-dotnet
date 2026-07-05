@@ -18,6 +18,17 @@ public class McpGatewayDbContext : DbContext
         v => v.ToString().ToLowerInvariant(),
         v => (ClientProfile)Enum.Parse(typeof(ClientProfile), v, ignoreCase: true));
 
+    private static readonly ValueConverter<SourceType, string> SourceTypeConverter = new(
+        v => v.ToCanonicalString(),
+        v => ParseSourceType(v));
+
+    private static SourceType ParseSourceType(string value) => value switch
+    {
+        "openapi" => SourceType.OpenApi,
+        "mcp-upstream" => SourceType.McpUpstream,
+        _ => throw new ArgumentOutOfRangeException(nameof(value), value, "Unknown source type")
+    };
+
     public McpGatewayDbContext(DbContextOptions<McpGatewayDbContext> options)
         : base(options)
     {
@@ -47,6 +58,10 @@ public class McpGatewayDbContext : DbContext
             entity.Property(e => e.ClientProfile)
                   .HasConversion(ClientProfileConverter)
                   .HasDefaultValue(ClientProfile.Universal);
+            entity.Property(e => e.SourceType)
+                  .HasConversion(SourceTypeConverter)
+                  .HasMaxLength(32)
+                  .HasDefaultValue(SourceType.OpenApi);
             entity.Property(e => e.PollIntervalMinutes).HasDefaultValue(1440);
             entity.Property(e => e.Status).HasDefaultValue("active");
             entity.Property(e => e.ApprovalStatus).HasDefaultValue("pending");
@@ -60,6 +75,8 @@ public class McpGatewayDbContext : DbContext
             entity.HasIndex(e => new { e.ServerDefinitionId, e.ToolName }).IsUnique();
             entity.Property(e => e.AuthConfig).HasDefaultValue("{}");
             entity.Property(e => e.Visible).HasDefaultValue(true);
+            entity.Property(e => e.HttpMethod).IsRequired(false);
+            entity.Property(e => e.HttpPath).IsRequired(false);
             entity.HasOne(e => e.ServerDefinition)
                   .WithMany(s => s.Tools)
                   .HasForeignKey(e => e.ServerDefinitionId)
