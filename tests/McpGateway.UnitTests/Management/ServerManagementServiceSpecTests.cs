@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
 using FluentAssertions;
+using McpGateway.Core.McpUpstream;
 using McpGateway.Core.Repositories;
 using McpGateway.Core.ServerDefinitions;
 using McpGateway.Core.SpecManagement;
@@ -26,6 +27,8 @@ public class ServerManagementServiceSpecTests
     private readonly IOpenApiSpecValidator _specValidator = Substitute.For<IOpenApiSpecValidator>();
     private readonly ISpecDiffService _diffService = Substitute.For<ISpecDiffService>();
     private readonly ICallerIdentityAccessor _caller = Substitute.For<ICallerIdentityAccessor>();
+    private readonly IMcpUpstreamClient _upstreamClient = Substitute.For<IMcpUpstreamClient>();
+    private readonly UpstreamCatalogImporter _catalogImporter = new();
 
     private ServerManagementService CreateSut()
     {
@@ -33,7 +36,7 @@ public class ServerManagementServiceSpecTests
             .Returns(new SpecValidationReport([], []));
         return new(
             _serverRepo, _specVersionRepo, _toolStore, _toolGenerator, _specValidator, _specFetcher, _diffService, _caller,
-            NullLogger<ServerManagementService>.Instance);
+            _upstreamClient, _catalogImporter, NullLogger<ServerManagementService>.Instance);
     }
 
     [Fact]

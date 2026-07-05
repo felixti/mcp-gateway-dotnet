@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
+using McpGateway.Core.McpUpstream;
 using McpGateway.Core.Repositories;
 using McpGateway.Core.ServerDefinitions;
 using McpGateway.Core.SpecManagement;
@@ -23,6 +24,8 @@ public class ServerManagementService
     private readonly ISpecFetcher _specFetcher;
     private readonly ISpecDiffService _diffService;
     private readonly ICallerIdentityAccessor _caller;
+    private readonly IMcpUpstreamClient _upstreamClient;
+    private readonly UpstreamCatalogImporter _catalogImporter;
     private readonly ILogger<ServerManagementService> _logger;
 
     public ServerManagementService(
@@ -34,6 +37,8 @@ public class ServerManagementService
         ISpecFetcher specFetcher,
         ISpecDiffService diffService,
         ICallerIdentityAccessor caller,
+        IMcpUpstreamClient upstreamClient,
+        UpstreamCatalogImporter catalogImporter,
         ILogger<ServerManagementService> logger)
     {
         _serverRepo = serverRepo;
@@ -44,6 +49,8 @@ public class ServerManagementService
         _specFetcher = specFetcher;
         _diffService = diffService;
         _caller = caller;
+        _upstreamClient = upstreamClient;
+        _catalogImporter = catalogImporter;
         _logger = logger;
     }
 
@@ -53,13 +60,26 @@ public class ServerManagementService
         if (existing is not null)
             throw new ConflictException($"Server definition '{request.Name}' already exists.");
 
+        var sourceType = ParseSourceType(request.SourceType);
+
+        IReadOnlyList<SpecValidationIssue>? warnings = null;
+        var definition = sourceType == SourceType.McpUpstream
+            ? await RegisterMcpUpstreamAsync(request, ct)
+            : await RegisterOpenApiAsync(request, ct, w => warnings = w);
+
+        var saved = await _serverRepo.AddAsync(definition, ct);
+        return ServerResponse.FromDomain(saved, warnings);
+    }
+
+    private async Task<McpServerDefinition> RegisterOpenApiAsync(CreateServerRequest request, CancellationToken ct, Action<IReadOnlyList<SpecValidationIssue>> setWarnings)
+    {
         var (specContent, specHash) = !string.IsNullOrWhiteSpace(request.SpecContent)
             ? (request.SpecContent!, ComputeHash(request.SpecContent!))
             : await FetchSpecAsync(request.SpecSourceUrl!, ct);
 
         var clientProfile = Enum.Parse<ClientProfile>(Capitalize(request.ClientProfile));
         ValidateAndThrow(specContent, clientProfile);
-        var warnings = GetWarnings(specContent, clientProfile);
+        setWarnings(GetWarnings(specContent, clientProfile));
 
         var parser = new OpenApiParser();
         var document = parser.Parse(specContent);
@@ -80,6 +100,7 @@ public class ServerManagementService
             AuthConfig = request.AuthConfig.ToJsonString(),
             ToolMode = Enum.Parse<ToolMode>(Capitalize(request.ToolMode)),
             ClientProfile = clientProfile,
+            SourceType = SourceType.OpenApi,
             PollIntervalMinutes = request.PollIntervalMinutes,
             Status = "active",
             ApprovalStatus = "pending",
@@ -101,8 +122,44 @@ public class ServerManagementService
             }).ToList()
         };
 
-        var saved = await _serverRepo.AddAsync(definition, ct);
-        return ServerResponse.FromDomain(saved, warnings);
+        return definition;
+    }
+
+    private async Task<McpServerDefinition> RegisterMcpUpstreamAsync(CreateServerRequest request, CancellationToken ct)
+    {
+        var upstreamUrl = request.UpstreamUrl?.Trim();
+        if (string.IsNullOrWhiteSpace(upstreamUrl))
+            throw new ValidationException(new[]
+            {
+                new FluentValidation.Results.ValidationFailure(nameof(request.UpstreamUrl), "UpstreamUrl is required for mcp-upstream source type.")
+            });
+
+        var upstreamTools = await _upstreamClient.ListToolsAsync(upstreamUrl, ct);
+        var now = DateTime.UtcNow;
+        var definition = new McpServerDefinition
+        {
+            Id = Guid.NewGuid(),
+            Name = request.Name,
+            DisplayName = request.DisplayName,
+            Description = request.Description,
+            SpecSourceUrl = upstreamUrl,
+            SpecContent = "{}",
+            SpecHash = ComputeHash("{}"),
+            BaseUrl = upstreamUrl.TrimEnd('/'),
+            AuthStrategy = request.AuthStrategy,
+            AuthConfig = request.AuthConfig.ToJsonString(),
+            ToolMode = ToolMode.All,
+            ClientProfile = ClientProfile.Universal,
+            SourceType = SourceType.McpUpstream,
+            PollIntervalMinutes = request.PollIntervalMinutes,
+            Status = "active",
+            ApprovalStatus = "pending",
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        definition.Tools = _catalogImporter.Import(upstreamTools, definition.Id).ToList();
+
+        return definition;
     }
 
     public async Task<SpecValidationReport> ValidateAsync(CreateServerRequest request, CancellationToken ct)
@@ -363,6 +420,23 @@ public class ServerManagementService
             diff.Added,
             diff.Removed,
             diff.Changed.Select(c => new ToolChangeDto(c.ToolName, c.HttpMethod, c.HttpPath, c.ChangedFields)).ToList());
+    }
+
+    private static SourceType ParseSourceType(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return SourceType.OpenApi;
+
+        return value.ToLowerInvariant() switch
+        {
+            "openapi" => SourceType.OpenApi,
+            "mcp-upstream" => SourceType.McpUpstream,
+            _ => throw new ValidationException(new[]
+            {
+                new FluentValidation.Results.ValidationFailure(nameof(CreateServerRequest.SourceType),
+                    $"Invalid source type '{value}'. Supported values are 'openapi' and 'mcp-upstream'.")
+            })
+        };
     }
 
     private static string Capitalize(string s)

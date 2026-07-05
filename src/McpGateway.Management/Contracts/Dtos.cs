@@ -16,7 +16,9 @@ public record CreateServerRequest(
     string ToolMode,
     string ClientProfile,
     int PollIntervalMinutes,
-    string? CreatedBy);
+    string? CreatedBy,
+    string? SourceType = null,
+    string? UpstreamUrl = null);
 
 public record UpdateServerRequest(
     string? DisplayName,
@@ -49,6 +51,8 @@ public record ServerResponse(
     DateTime? LastRefreshedAt,
     DateTime CreatedAt,
     DateTime UpdatedAt,
+    string SourceType,
+    string? UpstreamUrl = null,
     IReadOnlyList<SpecValidationIssue>? Warnings = null)
 {
     public static ServerResponse FromDomain(McpServerDefinition d, IReadOnlyList<SpecValidationIssue>? warnings = null) => new(
@@ -56,6 +60,8 @@ public record ServerResponse(
         d.AuthStrategy, ParseJsonObject(d.AuthConfig), d.ToolMode.ToString().ToLowerInvariant(),
         d.ClientProfile.ToString().ToLowerInvariant(), d.PollIntervalMinutes, d.Status,
         d.ApprovalStatus, d.ApprovedAt, d.ApprovedBy, d.LastRefreshedAt, d.CreatedAt, d.UpdatedAt,
+        d.SourceType.ToCanonicalString(),
+        d.SourceType == global::McpGateway.Core.ServerDefinitions.SourceType.McpUpstream ? d.SpecSourceUrl : null,
         warnings);
 
     private static JsonObject ParseJsonObject(string raw)
