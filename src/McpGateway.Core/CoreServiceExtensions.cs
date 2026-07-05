@@ -1,3 +1,5 @@
+using McpGateway.Core.McpUpstream;
+using McpGateway.Core.Proxy;
 using McpGateway.Core.SpecManagement;
 using McpGateway.Core.ToolGeneration;
 using McpGateway.Core.ToolStore;
@@ -23,6 +25,12 @@ public static class CoreServiceExtensions
         services.AddSingleton<ISpecDiffService, SpecDiffService>();
         services.AddScoped<ServerSpecRefresher>();
         services.AddScoped<ISpecRefresher, SpecRefresher>();
+
+        services.AddSingleton<UpstreamCatalogImporter>();
+        services.AddSingleton<IMcpUpstreamClient, SdkMcpUpstreamClient>();
+        services.AddSingleton<McpUpstreamInvocationStrategy>();
+        services.AddSingleton<IToolInvocationStrategy>(provider =>
+            provider.GetRequiredService<McpUpstreamInvocationStrategy>());
 
         services.AddHostedService<SpecRefresherBackgroundService>();
 
