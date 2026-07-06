@@ -1,0 +1,41 @@
+meta {
+  name: Register MCP Upstream Server
+  type: http
+  seq: 20
+}
+
+post {
+  url: {{baseUrl}}/admin/servers
+  body: json
+  auth: none
+}
+
+headers {
+  X-Dev-Admin: {{adminUpn}}
+  Content-Type: application/json
+  Accept: application/json
+}
+
+body:json {
+  {
+    "name": "{{upstreamServerName}}",
+    "displayName": "MCP Upstream Smoke",
+    "description": "Re-host an existing MCP server through the gateway",
+    "sourceType": "mcp-upstream",
+    "specSourceUrl": "{{upstreamUrl}}",
+    "upstreamUrl": "{{upstreamUrl}}",
+    "baseUrl": "{{upstreamUrl}}",
+    "authStrategy": "passthrough",
+    "authConfig": {},
+    "toolMode": "all",
+    "clientProfile": "universal",
+    "pollIntervalMinutes": 1440,
+    "createdBy": "{{adminUpn}}"
+  }
+}
+
+docs {
+  Register an MCP Server Definition from an existing MCP server's tools/list catalog.
+
+  The current validator still requires specSourceUrl or specContent, so this smoke request sets specSourceUrl to the same value as upstreamUrl. For mcp-upstream registrations the service imports tools from upstreamUrl and stores tools with null HttpMethod/HttpPath.
+}

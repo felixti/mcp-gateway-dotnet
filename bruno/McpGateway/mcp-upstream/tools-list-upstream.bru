@@ -1,0 +1,30 @@
+meta {
+  name: Tools List MCP Upstream
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/mcp/{{upstreamServerName}}
+  body: json
+  auth: none
+}
+
+headers {
+  X-Gateway-Key: {{upstreamMcpApiKey}}
+  Content-Type: application/json
+  Accept: text/event-stream, application/json
+}
+
+body:json {
+  {
+    "jsonrpc": "2.0",
+    "id": 102,
+    "method": "tools/list",
+    "params": {}
+  }
+}
+
+docs {
+  List tools imported from the upstream MCP server. The imported tools are served by the gateway after admin approval.
+}

@@ -1,7 +1,12 @@
 vars {
   baseUrl: http://localhost:5121
   adminUpn: admin@example.com
+  upstreamServerName: upstream-smoke
+  upstreamUrl: http://localhost:7001/mcp
+  upstreamToolName: echo
 }
 
 vars:secret [
+  mcpApiKey
+  upstreamMcpApiKey
 ]

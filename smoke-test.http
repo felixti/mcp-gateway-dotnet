@@ -1,8 +1,13 @@
 @host = http://localhost:5121
 @adminUpn = admin@example.com
 @serverName = petstore-smoke
-# Replace with the fullKey returned by the create-API-key request below.
+@upstreamServerName = upstream-smoke
+@upstreamUrl = http://localhost:7001/mcp
+@upstreamToolName = echo
+# Replace with the fullKey returned by the Petstore create-API-key request below.
 @gatewayKey = REPLACE_ME
+# Replace with the fullKey returned by the MCP-upstream create-API-key request below.
+@upstreamGatewayKey = REPLACE_ME
 
 ### Dry-run validate the spec before registering
 POST {{host}}/admin/servers/validate
@@ -104,5 +109,95 @@ Accept: application/json, text/event-stream
   "params": {
     "name": "findpetsbystatus",
     "arguments": { "status": "available" }
+  }
+}
+
+
+### Register an existing MCP server as an mcp-upstream server definition
+# Requires an MCP Streamable HTTP server running at @upstreamUrl.
+# Current registration validation still requires specSourceUrl or specContent,
+# so specSourceUrl is intentionally set to the same URL as upstreamUrl.
+POST {{host}}/admin/servers
+X-Dev-Admin: {{adminUpn}}
+Content-Type: application/json
+Accept: application/json
+
+{
+  "name": "{{upstreamServerName}}",
+  "displayName": "MCP Upstream Smoke",
+  "description": "Re-host an existing MCP server through the gateway",
+  "sourceType": "mcp-upstream",
+  "specSourceUrl": "{{upstreamUrl}}",
+  "upstreamUrl": "{{upstreamUrl}}",
+  "baseUrl": "{{upstreamUrl}}",
+  "authStrategy": "passthrough",
+  "authConfig": {},
+  "toolMode": "all",
+  "clientProfile": "universal",
+  "pollIntervalMinutes": 1440,
+  "createdBy": "{{adminUpn}}"
+}
+
+### Approve the mcp-upstream server definition so imported tools are exposed
+POST {{host}}/admin/servers/{{upstreamServerName}}/approve
+X-Dev-Admin: {{adminUpn}}
+
+### Create an MCP client API key for the mcp-upstream server
+# Copy the `fullKey` value from the response into @upstreamGatewayKey above,
+# then run the MCP-upstream requests below.
+POST {{host}}/admin/servers/{{upstreamServerName}}/api-keys
+X-Dev-Admin: {{adminUpn}}
+Content-Type: application/json
+
+{
+  "name": "manual-upstream-smoke-test",
+  "scopes": ["{{upstreamServerName}}"]
+}
+
+### MCP-upstream initialize
+POST {{host}}/mcp/{{upstreamServerName}}
+X-Gateway-Key: {{upstreamGatewayKey}}
+Content-Type: application/json
+Accept: application/json, text/event-stream
+
+{
+  "jsonrpc": "2.0",
+  "id": 101,
+  "method": "initialize",
+  "params": {
+    "protocolVersion": "2025-06-18",
+    "capabilities": {},
+    "clientInfo": { "name": "manual-upstream-smoke-test", "version": "0.0.1" }
+  }
+}
+
+### MCP-upstream list imported tools
+POST {{host}}/mcp/{{upstreamServerName}}
+X-Gateway-Key: {{upstreamGatewayKey}}
+Content-Type: application/json
+Accept: application/json, text/event-stream
+
+{
+  "jsonrpc": "2.0",
+  "id": 102,
+  "method": "tools/list",
+  "params": {}
+}
+
+### MCP-upstream call imported tool
+# The default assumes an upstream echo tool that accepts { "msg": string }.
+# Change @upstreamToolName and the arguments object if your upstream differs.
+POST {{host}}/mcp/{{upstreamServerName}}
+X-Gateway-Key: {{upstreamGatewayKey}}
+Content-Type: application/json
+Accept: application/json, text/event-stream
+
+{
+  "jsonrpc": "2.0",
+  "id": 103,
+  "method": "tools/call",
+  "params": {
+    "name": "{{upstreamToolName}}",
+    "arguments": { "msg": "hello from http client" }
   }
 }

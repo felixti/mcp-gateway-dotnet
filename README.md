@@ -1,9 +1,9 @@
 # MCP Gateway (.NET 10)
 
-An MCP (Model Context Protocol) gateway that takes any web API's OpenAPI
-specification, dynamically generates MCP tools, and proxies calls via
-HttpClient + Polly. Built for financial company infrastructure: Entra ID auth,
-full audit trail, admin approval workflow, per-environment deployment.
+An MCP (Model Context Protocol) gateway that turns backends into MCP servers.
+It supports OpenAPI-backed HTTP APIs and existing upstream MCP servers, then
+serves both through one governed MCP endpoint with Entra ID/API-key auth, full
+audit trail, admin approval workflow, and per-environment deployment.
 
 ## Why
 
@@ -15,17 +15,20 @@ side, no MCP SDK integration, no per-API server process.
 
 ## How it works
 
-1. Admin registers an OpenAPI spec (URL or file upload) via the management API
-2. Gateway parses the spec and generates one MCP tool per (path, method) pair
+1. Admin registers a source via the management API:
+   - `openapi`: an OpenAPI spec URL or upload plus a backend `baseUrl`
+   - `mcp-upstream`: an upstream MCP Streamable HTTP endpoint
+2. Gateway generates or imports the tool catalog
 3. Admin reviews tool descriptions (prompt injection defense) and approves
 4. MCP clients connect to `/mcp/{server_name}` and call tools
-5. Gateway proxies each call to the underlying API with auth injection
+5. Gateway dispatches by source type: HTTP proxy for OpenAPI tools, JSON-RPC
+   forwarding for MCP-upstream tools
 6. Every call is audited and traced
 
 ## Stack
 
 - .NET 10 / ASP.NET Core 10 / C# 13
-- ModelContextProtocol.AspNetCore (C# MCP SDK)
+- ModelContextProtocol 2.0.0-preview.1 (server-side AspNetCore + client-side upstream MCP calls)
 - Microsoft.OpenApi (OpenAPI 3.0+ parser)
 - EF Core 10 + PostgreSQL 18
 - Polly (retry, circuit breaker, timeout)
@@ -95,7 +98,8 @@ curl -X POST http://localhost:5000/admin/servers/invoice-api/approve \
 - [API Specification](docs/api-specification.md) — MCP endpoints, admin API, health, error codes
 - [Project Structure](docs/project-structure.md) — 6 C# projects, horizontal layout, conventions
 - [Testing Strategy](docs/testing-strategy.md) — shift-left, xUnit, Testcontainers, Reqnroll BDD
-- [Domain Glossary](CONTEXT.md) — 10 terms across Access Control, Core Concepts, Audit, Observability
+- [Domain Glossary](CONTEXT.md) — source types, auth, tool, audit, and observability terms
+- [Bruno and HTTP Smoke Tests](docs/bruno-smoke-test.md) — manual OpenAPI and MCP-upstream runbook
 
 ### ADRs
 
@@ -107,12 +111,12 @@ curl -X POST http://localhost:5000/admin/servers/invoice-api/approve \
 ## Key decisions
 
 - One gateway per environment (dev/stg/prd) — no cross-environment routing
-- base_url + auth_config live directly on server definitions (no instance table)
+- Server definitions hold source coordinates and auth config directly (no instance table)
 - Admin approval required before tools go live (prompt injection defense)
-- OBO token exchange as default auth for internal APIs (per-user attribution)
-- Hot-reload via custom IMcpServerTool + ConcurrentDictionary (no restart on spec change)
-- Migrations are SQL-scripted for DBA ticket process (production PG user is DML-only)
-- Tool descriptions from spec only, admin override survives refresh (no LLM enhancement)
+- OBO token exchange as default auth for internal OpenAPI-backed APIs (per-user attribution)
+- Runtime tool serving uses the in-memory tool store and hot-reloads approved definitions
+- EF Core migrations manage the development schema; production rollout can still use reviewed SQL
+- Tool descriptions come from OpenAPI specs or upstream MCP catalogs; admin overrides survive refresh
 
 ## Deployment
 

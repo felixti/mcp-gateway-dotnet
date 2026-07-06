@@ -1,0 +1,33 @@
+meta {
+  name: Tools Call MCP Upstream
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/mcp/{{upstreamServerName}}
+  body: json
+  auth: none
+}
+
+headers {
+  X-Gateway-Key: {{upstreamMcpApiKey}}
+  Content-Type: application/json
+  Accept: text/event-stream, application/json
+}
+
+body:json {
+  {
+    "jsonrpc": "2.0",
+    "id": 103,
+    "method": "tools/call",
+    "params": {
+      "name": "{{upstreamToolName}}",
+      "arguments": { "msg": "hello from bruno" }
+    }
+  }
+}
+
+docs {
+  Call a tool imported from the upstream MCP server. The default body assumes an upstream echo tool with a msg string argument; edit upstreamToolName and arguments if your upstream exposes a different contract.
+}

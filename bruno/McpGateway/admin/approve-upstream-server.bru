@@ -1,0 +1,20 @@
+meta {
+  name: Approve MCP Upstream Server
+  type: http
+  seq: 21
+}
+
+post {
+  url: {{baseUrl}}/admin/servers/{{upstreamServerName}}/approve
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-Admin: {{adminUpn}}
+  Accept: application/json
+}
+
+docs {
+  Approve the mcp-upstream server definition so the imported upstream tools are exposed through the gateway's MCP endpoint.
+}

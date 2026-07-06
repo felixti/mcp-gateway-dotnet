@@ -1,0 +1,34 @@
+meta {
+  name: Create MCP Upstream API Key
+  type: http
+  seq: 22
+}
+
+post {
+  url: {{baseUrl}}/admin/servers/{{upstreamServerName}}/api-keys
+  body: json
+  auth: none
+}
+
+headers {
+  X-Dev-Admin: {{adminUpn}}
+  Content-Type: application/json
+  Accept: application/json
+}
+
+body:json {
+  {
+    "name": "bruno-upstream-smoke-test",
+    "scopes": ["{{upstreamServerName}}"]
+  }
+}
+
+script:post-response {
+  if (res.body && res.body.fullKey) {
+    bru.setEnvVar("upstreamMcpApiKey", res.body.fullKey);
+  }
+}
+
+docs {
+  Issue a gateway API key scoped to the mcp-upstream smoke server. The full key is saved to the upstreamMcpApiKey environment variable.
+}
