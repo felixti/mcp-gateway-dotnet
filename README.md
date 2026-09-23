@@ -127,4 +127,4 @@ queue down → disk fallback, API down → Polly circuit breaker). See
 
 ## License
 
-Private repository. Internal use only.
+MIT
